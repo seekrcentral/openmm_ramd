@@ -29,7 +29,7 @@ steps_per_trajectory_update = 50000
 minimize = True
 
 # The total number of RAMD steps to take
-num_steps = 100000000 # 200 nanoseconds
+num_steps = 1000000 # 2 nanoseconds
 
 # The interval between energy printed to standard output
 steps_per_energy_update = 300000
@@ -78,6 +78,8 @@ RAMD_cutoff_distance = 0.0025 * unit.nanometer
 
 RAMD_max_distance = 1.5 * unit.nanometer
 
+ramd_log_filename = "ramd.log"
+
 #starting_ligand_site_distance = get_site_ligand_distance(
 #    input_pdb_file, rec_indices, lig_indices)
 #print("Starting ligand-site distance:", starting_ligand_site_distance)
@@ -90,7 +92,6 @@ RAMD_max_distance = 1.5 * unit.nanometer
 ########################################################
 # DO NOT MODIFY BELOW UNLESS YOU KNOW WHAT YOU'RE DOING
 ########################################################
-
 prmtop = app.AmberPrmtopFile(prmtop_filename)
 mypdb = app.PDBFile(input_pdb_file)
 pdb_parmed = parmed.load_file(input_pdb_file)
@@ -114,7 +115,7 @@ properties = {"CudaDeviceIndex": cuda_index, "CudaPrecision": "mixed"}
 #simulation = app.Simulation(prmtop.topology, system, integrator, platform, properties)
 simulation = openmm_ramd.RAMDSimulation(
     prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
-    rec_indices, platform, properties)
+    rec_indices, platform, properties, ramd_log_filename)
 
 simulation.context.setPositions(mypdb.positions)
 simulation.context.setPeriodicBoxVectors(*box_vectors)
@@ -126,34 +127,15 @@ simulation.reporters.append(app.StateDataReporter(stdout, steps_per_energy_updat
             potentialEnergy=True, temperature=True, volume=True))
 pdb_reporter = app.PDBReporter(trajectory_filename, steps_per_trajectory_update)
 simulation.reporters.append(pdb_reporter)
-
-new_com = base.get_ligand_com(system, mypdb.positions, lig_indices)
 start_time = time.time()
-counter = 0
-while counter < num_steps:
-    old_com = new_com
-    simulation.step(steps_per_RAMD_update)
-    state = simulation.context.getState(getPositions = True)
-    positions = state.getPositions()
-    new_com = base.get_ligand_com(system, positions, lig_indices)
-    com_com_distance = np.linalg.norm(old_com.value_in_unit(unit.nanometers) \
-                                      - new_com.value_in_unit(unit.nanometers))
-    
-    lig_rec_distance = base.get_ligand_receptor_distance(system, positions, lig_indices, rec_indices)
-    if counter % 5000 == 0:
-        print("step:", counter, "lig_rec_distance:", lig_rec_distance)
-        
-    if com_com_distance*unit.nanometers < RAMD_cutoff_distance:
-        print("recomputing force at step:", counter)
-        simulation.recompute_RAMD_force()
-    
-    counter += steps_per_RAMD_update
-    if lig_rec_distance > RAMD_max_distance:
-        print("max distance exceeded at step:", counter)
-        break
-    
+step_counter = simulation.run_RAMD_sim(
+    max_num_steps=num_steps, ramdSteps=steps_per_RAMD_update, 
+    rMinRamd=RAMD_cutoff_distance.value_in_unit(unit.angstroms), 
+    forceOutFreq=steps_per_RAMD_update, 
+    maxDist=RAMD_max_distance.value_in_unit(unit.angstrom))
+
 total_time = time.time() - start_time
-simulation_in_ns = counter * time_step.value_in_unit(unit.picoseconds) * 1e-3
+simulation_in_ns = step_counter * time_step.value_in_unit(unit.picoseconds) * 1e-3
 total_time_in_days = total_time / (86400.0)
 ns_per_day = simulation_in_ns / total_time_in_days
 print("RAMD benchmark:", ns_per_day, "ns/day")

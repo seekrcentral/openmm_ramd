@@ -7,6 +7,9 @@ openmm_ramd
 
 Implement random accelerated molecular dynamics (RAMD) in OpenMM.
 
+WARNING: This program is in the early stages and may not perform correctly.
+Use at your own discretion.
+
 ### Copyright
 
 Copyright (c) 2021, Lane Votapka
