@@ -22,7 +22,11 @@ except ImportError:
     import simtk.openmm.unit as unit
 import parmed
 
+import openmm_ramd
+print("dir(openmm_ramd):", dir(openmm_ramd))
 import openmm_ramd.openmm_ramd as openmm_ramd
+print("dir(openmm_ramd):", dir(openmm_ramd))
+
 
 TEST_DIRECTORY = os.path.dirname(__file__)
 ROOT_DIRECTORY = os.path.join(TEST_DIRECTORY, "..")

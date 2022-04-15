@@ -61,9 +61,9 @@ jobs:
       shell: bash -l {0}
 
       run: |
-        python setup.py install
+        # python setup.py install
         python -m openmm.testInstallation
-        pytest -v --cov=openmm_ramd --cov-report=xml --color=yes openmm_ramd/tests/
+        pytest -v --cov=openmm_ramd --cov-report=xml --color=yes openmm_ramd/tests/ -s
 
     - name: CodeCov
       uses: codecov/codecov-action@v1
