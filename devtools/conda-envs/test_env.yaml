@@ -8,6 +8,9 @@ dependencies:
     # Base depends
   - python
   - pip
+  - numpy
+  - scipy
+  - openmm
 
     # Testing
   - pytest
@@ -15,6 +18,8 @@ dependencies:
   - codecov
 
     # Pip-only installs
-  #- pip:
-  #  - codecov
+  - pip:
+    - codecov
+    - parmed
+    - mdtraj
 

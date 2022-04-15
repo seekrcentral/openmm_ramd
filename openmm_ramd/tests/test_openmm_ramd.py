@@ -6,8 +6,6 @@ Unit and regression test for the openmm_ramd package.
 import sys
 import os
 
-import pytest
-import numpy as np
 try:
     import openmm
 except ImportError:

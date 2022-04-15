@@ -70,7 +70,6 @@ cuda_index = "0"
 # Nonbonded cutoff
 nonbonded_cutoff = 1.0 * unit.nanometer
 
-
 # The interval between RAMD force evaluations and updates
 steps_per_RAMD_update = 50
 
@@ -102,8 +101,9 @@ assert pdb_parmed.box_vectors is not None, "No box vectors "\
 
 box_vectors = pdb_parmed.box_vectors
 
-system = prmtop.createSystem(nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
-        constraints=app.HBonds)
+system = prmtop.createSystem(
+    nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
+    constraints=app.HBonds)
 if constant_pressure:
     barostat = mm.MonteCarloBarostat(target_pressure, temperature, 25)
     system.addForce(barostat)

@@ -18,7 +18,6 @@ try:
 except:
     long_description = None
 
-
 setup(
     # Self-descriptive entries which should always be present
     name='openmm_ramd',
@@ -47,6 +46,7 @@ setup(
     # Additional entries you may want simply uncomment the lines you want and fill in the data
     # url='http://www.my_package.com',  # Website
     # install_requires=[],              # Required packages, pulls from pip if needed; do not use for Conda deployment
+    install_requires=["numpy", "parmed", "mdtraj"],
     # platforms=['Linux',
     #            'Mac OS-X',
     #            'Unix',
