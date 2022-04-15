@@ -18,15 +18,15 @@ try:
 except ImportError:
     import simtk.openmm.unit as unit
 
-#import openmm_ramd.base as base
-#import openmm_ramd.force as force
-#import openmm_ramd.logger as logger
-#from openmm_ramd.base import kcal_per_mole_per_angstrom
+import openmm_ramd.base as base
+import openmm_ramd.force as force
+import openmm_ramd.logger as logger
+from openmm_ramd.base import kcal_per_mole_per_angstrom
 
-import .base
-import .force
-import .logger
-from .base import kcal_per_mole_per_angstrom
+#import .base
+#import .force
+#import .logger
+#from .base import kcal_per_mole_per_angstrom
 
 class RAMDSimulation(openmm_app.Simulation):
     """
