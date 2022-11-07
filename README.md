@@ -65,6 +65,14 @@ cd openmm_ramd
 python setup.py install
 ```
 
+If you get an error stating “No module named ‘Cython’”, this can usually be 
+remedied by installing/updating Cython with:
+
+```
+pip install --upgrade cython
+```
+
+
 ### Testing OpenMM RAMD (Optional)
 To test OpenMM RAMD, run the following command in the openmm_ramd/ directory:
 

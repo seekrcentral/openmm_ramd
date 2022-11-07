@@ -48,18 +48,33 @@ class RAMD_Force_Handler():
         RAMD external force.
         """
         
-        force = openmm.CustomCentroidBondForce(2, RAMD_FORCE_EXPRESSION)
-        force.setForceGroup(self.force_group)
-        self.group_index_lig = force.addGroup(self.ligand_atom_indices)
-        self.group_index_rec = force.addGroup(self.receptor_atom_indices)
-        force.addPerBondParameter("f_x")
-        force.addPerBondParameter("f_y")
-        force.addPerBondParameter("f_z")
-        self.bond_index = force.addBond([self.group_index_lig, 
-                                         self.group_index_rec], 
-                                        [0.0*kcal_per_mole_per_angstrom, 
-                                         0.0*kcal_per_mole_per_angstrom, 
-                                         0.0*kcal_per_mole_per_angstrom])
+        if self.receptor_atom_indices is None \
+                or len(self.receptor_atom_indices) == 0:
+            self.receptor_atom_indices = None
+            force = openmm.CustomCentroidBondForce(1, RAMD_FORCE_EXPRESSION)
+            force.setForceGroup(self.force_group)
+            self.group_index_lig = force.addGroup(self.ligand_atom_indices)
+            force.addPerBondParameter("f_x")
+            force.addPerBondParameter("f_y")
+            force.addPerBondParameter("f_z")
+            self.bond_index = force.addBond([self.group_index_lig], 
+                                            [0.0*kcal_per_mole_per_angstrom, 
+                                             0.0*kcal_per_mole_per_angstrom, 
+                                             0.0*kcal_per_mole_per_angstrom])
+            
+        else:
+            force = openmm.CustomCentroidBondForce(2, RAMD_FORCE_EXPRESSION)
+            force.setForceGroup(self.force_group)
+            self.group_index_lig = force.addGroup(self.ligand_atom_indices)
+            self.group_index_rec = force.addGroup(self.receptor_atom_indices)
+            force.addPerBondParameter("f_x")
+            force.addPerBondParameter("f_y")
+            force.addPerBondParameter("f_z")
+            self.bond_index = force.addBond([self.group_index_lig, 
+                                             self.group_index_rec], 
+                                            [0.0*kcal_per_mole_per_angstrom, 
+                                             0.0*kcal_per_mole_per_angstrom, 
+                                             0.0*kcal_per_mole_per_angstrom])
         self.force_object = force
         self.force_vector = np.array([0.0*kcal_per_mole_per_angstrom, 
                                       0.0*kcal_per_mole_per_angstrom, 
@@ -83,9 +98,14 @@ class RAMD_Force_Handler():
         f_y = force_vector[1]
         f_z = force_vector[2]
         force = self.force_object
-        force.setBondParameters(self.bond_index, [self.group_index_lig, 
-                                                  self.group_index_rec], 
-                                [f_x, f_y, f_z])
+        if self.receptor_atom_indices is None \
+                or len(self.receptor_atom_indices) == 0:
+            force.setBondParameters(self.bond_index, [self.group_index_lig], 
+                                    [f_x, f_y, f_z])
+        else:
+            force.setBondParameters(self.bond_index, [self.group_index_lig, 
+                                                      self.group_index_rec], 
+                                    [f_x, f_y, f_z])
         self.force_vector = force_vector
         self.random_vector = force_vector_unscaled
         return
