@@ -115,7 +115,11 @@ properties = {"CudaDeviceIndex": cuda_index, "CudaPrecision": "mixed"}
 #simulation = app.Simulation(prmtop.topology, system, integrator, platform, properties)
 simulation = openmm_ramd.RAMDSimulation(
     prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
-    rec_indices, platform, properties, ramd_log_filename)
+    rec_indices, ramdSteps=steps_per_RAMD_update, 
+    rMinRamd=RAMD_cutoff_distance.value_in_unit(unit.angstroms), 
+    forceOutFreq=steps_per_RAMD_update, 
+    maxDist=RAMD_max_distance.value_in_unit(unit.angstrom),
+    platform=platform, properties=properties, log_file_name=ramd_log_filename)
 
 simulation.context.setPositions(mypdb.positions)
 simulation.context.setPeriodicBoxVectors(*box_vectors)
@@ -129,10 +133,7 @@ pdb_reporter = app.PDBReporter(trajectory_filename, steps_per_trajectory_update)
 simulation.reporters.append(pdb_reporter)
 start_time = time.time()
 step_counter = simulation.run_RAMD_sim(
-    max_num_steps=num_steps, ramdSteps=steps_per_RAMD_update, 
-    rMinRamd=RAMD_cutoff_distance.value_in_unit(unit.angstroms), 
-    forceOutFreq=steps_per_RAMD_update, 
-    maxDist=RAMD_max_distance.value_in_unit(unit.angstrom))
+    max_num_steps=num_steps)
 
 total_time = time.time() - start_time
 simulation_in_ns = step_counter * time_step.value_in_unit(unit.picoseconds) * 1e-3

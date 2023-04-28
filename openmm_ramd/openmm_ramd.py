@@ -271,11 +271,12 @@ class RAMDSimulation(openmm_app.Simulation):
     
     def run_RAMD_sim(self, max_num_steps=1e8):
         self.counter = 0
-        lig_com = self.RAMD_start()
+        start_lig_com = self.RAMD_start()
         
         # Do the simulation steps and loop here. These are done every step
         while self.counter < max_num_steps:
-            lig_com, lig_prot_com_distance = self.RAMD_step(self.ramdSteps)
+            lig_com = self.RAMD_step(self.ramdSteps)
+            lig_prot_com_distance = np.linalg.norm(lig_com - start_lig_com)
             if lig_prot_com_distance > self.maxDist:
                 self.max_distance_exceeded(self.counter)
                 break
