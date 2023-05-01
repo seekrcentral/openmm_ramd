@@ -132,8 +132,7 @@ simulation.reporters.append(app.StateDataReporter(stdout, steps_per_energy_updat
 pdb_reporter = app.PDBReporter(trajectory_filename, steps_per_trajectory_update)
 simulation.reporters.append(pdb_reporter)
 start_time = time.time()
-step_counter = simulation.run_RAMD_sim(
-    max_num_steps=num_steps)
+step_counter = simulation.run_RAMD_sim(max_num_steps=num_steps)
 
 total_time = time.time() - start_time
 simulation_in_ns = step_counter * time_step.value_in_unit(unit.picoseconds) * 1e-3

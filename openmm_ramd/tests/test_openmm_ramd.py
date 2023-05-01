@@ -28,7 +28,9 @@ import openmm_ramd.openmm_ramd as openmm_ramd
 TEST_DIRECTORY = os.path.dirname(__file__)
 ROOT_DIRECTORY = os.path.join(TEST_DIRECTORY, "..")
 
-def make_openmm_ramd_simulation_object(log_file_name=None):
+def make_openmm_ramd_simulation_object(
+        log_file_name=None, ramdSteps=10, rMinRamd=0.025, forceOutFreq=10, 
+        maxDist=12.0):
     temperature = 298.15 * unit.kelvin
     ramd_force_magnitude = 14.0 * unit.kilocalories_per_mole / unit.angstrom
     rec_indices = [569, 583, 605, 617, 1266, 1292, 1299, 1374, 1440, 1459, 1499,
@@ -56,7 +58,9 @@ def make_openmm_ramd_simulation_object(log_file_name=None):
         temperature, 1/unit.picosecond, 0.002*unit.picoseconds)
     simulation = openmm_ramd.RAMDSimulation(
         prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
-        rec_indices, log_file_name=log_file_name)
+        rec_indices, ramdSteps=ramdSteps, rMinRamd=rMinRamd, 
+        forceOutFreq=forceOutFreq, maxDist=maxDist,
+        log_file_name=log_file_name)
     
     simulation.context.setPositions(mypdb.positions)
     simulation.context.setPeriodicBoxVectors(*box_vectors)
@@ -77,10 +81,10 @@ def test_openmm_ramd_simulation():
 
 def test_openmm_run_RAMD_sim(tmp_path):
     log_file_name = os.path.join(tmp_path, "ramd.log")
-    simulation = make_openmm_ramd_simulation_object(log_file_name)
-    step_counter = simulation.run_RAMD_sim(
-        max_num_steps=50, ramdSteps=10, rMinRamd=0.025, forceOutFreq=10, 
+    simulation = make_openmm_ramd_simulation_object(
+        log_file_name, ramdSteps=10, rMinRamd=0.025, forceOutFreq=10, 
         maxDist=12.0)
+    step_counter = simulation.run_RAMD_sim(max_num_steps=50)
     assert step_counter == 50
     assert os.path.exists(log_file_name)
     
