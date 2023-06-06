@@ -93,7 +93,7 @@ One may copy and adapt this script to their own systems and settings.
 
 ### Copyright
 
-Copyright (c) 2021, Lane Votapka
+Copyright (c) 2023, Lane Votapka
 
 
 #### Acknowledgements

@@ -52,9 +52,7 @@ lig_indices = [3259, 3260, 3261, 3262, 3263, 3264, 3265, 3266, 3267, 3268,
 # Indices for VMD selection
 # 3259 3260 3261 3262 3263 3264 3265 3266 3267 3268 3269 3270 3271 3272 3273 3274 3275 3276 3277 3278 3279 3280 3281 3282 3283 3284 3285 3286 3287 3288
 
-# To hold the ligand in place during the equilibration, a harmonic force 
-#  keeps the center of mass of the ligand and binding site at a constant
-#  distance
+# The RAMD force constant
 ramd_force_magnitude = 14.0 * unit.kilocalories_per_mole / unit.angstrom
 
 # simulation initial and target temperature

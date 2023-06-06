@@ -45,24 +45,24 @@ class RAMDSimulation(openmm_app.Simulation):
         Compiled string including quote and optional attribution.
     """
     def __init__(self, topology, system, integrator, ramd_force_magnitude, 
-                 ligand_atom_indices, receptor_atom_indices, 
+                 ligand_atom_indices, receptor_atom_indices=None, 
                  
                  ramdSteps=50, rMinRamd=0.025, 
                  forceOutFreq=50, mdSteps=0, mdStart="no", rMinMd=0, 
                  maxDist=50, debug_level=0,
                  
                  platform=None, 
-                 properties=None, log_file_name=None, ramd_force_group=1,
+                 properties=None, logFileName=None, ramdForceGroup=1,
                  ramdSeed=0):
-        self.log_file_name = log_file_name
+        self.log_file_name = logFileName
         self.logger = None
-        if log_file_name is not None:
-            self.logger = logger.RAMD_logger(log_file_name)
+        if logFileName is not None:
+            self.logger = logger.RAMD_logger(logFileName)
             
         self.force_handler = force.RAMD_Force_Handler(ramd_force_magnitude, 
                                                  ligand_atom_indices,
                                                  receptor_atom_indices,
-                                                 ramd_force_group)
+                                                 ramdForceGroup)
         self.force_handler.make_RAMD_force_object()
         forcenum = system.addForce(self.force_handler.force_object)
         self.ramdSeed = ramdSeed
