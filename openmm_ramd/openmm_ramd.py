@@ -149,6 +149,8 @@ class RAMDSimulation(openmm_app.Simulation):
                     kcal_per_mole_per_angstrom)))
             self.logger.log("rMinRamd                 {}".format(self.rMinRamd))
             self.logger.log("forceOutFreq             {}".format(self.forceOutFreq))
+            self.logger.log("timeStep                 {}".format(self.integrator.getStepSize()))
+            self.logger.log("temperature              {}".format(self.integrator.getTemperature()))
             self.logger.log("protAtoms                {}".format(
                 self.force_handler.receptor_atom_indices))
             self.logger.log("ligAtoms                 {}".format(
@@ -218,9 +220,9 @@ class RAMDSimulation(openmm_app.Simulation):
             - self.old_lig_com.value_in_unit(unit.angstroms))
         if self.counter % self.forceOutFreq == 0:
             if self.logger is not None:
-                self.logger.force_log("> LIGAND COM is: {}".format(lig_com), self.counter)
+                self.logger.force_log("> LIGAND COM IS: {}".format(lig_com), self.counter)
                 if self.force_handler.receptor_atom_indices is not None:
-                    self.logger.force_log("> PROTEIN COM IS {}".format(rec_com), self.counter)
+                    self.logger.force_log("> PROTEIN COM IS: {}".format(rec_com), self.counter)
                 self.logger.timestep_log(
                     "> EXTERNAL FORCE VECTOR (F): {}; ||F|| = {}".format(
                         force_direction, force_direction_magnitude), self.counter)

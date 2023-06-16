@@ -28,8 +28,8 @@ steps_per_trajectory_update = 50000
 # Whether to minimize
 minimize = True
 
-# The total number of RAMD steps to take
-num_steps = 1000000 # 2 nanoseconds
+# The max number of RAMD steps to take
+num_steps = 10000000 # 20 nanoseconds
 
 # The interval between energy printed to standard output
 steps_per_energy_update = 300000
@@ -117,7 +117,7 @@ simulation = openmm_ramd.RAMDSimulation(
     rMinRamd=RAMD_cutoff_distance.value_in_unit(unit.angstroms), 
     forceOutFreq=steps_per_RAMD_update, 
     maxDist=RAMD_max_distance.value_in_unit(unit.angstrom),
-    platform=platform, properties=properties, log_file_name=ramd_log_filename)
+    platform=platform, properties=properties, logFileName=ramd_log_filename)
 
 simulation.context.setPositions(mypdb.positions)
 simulation.context.setPeriodicBoxVectors(*box_vectors)
