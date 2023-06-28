@@ -91,6 +91,17 @@ python hsp90_ramd_example.py
 
 One may copy and adapt this script to their own systems and settings.
 
+## Authors and Contributors
+
+The following people have contributed directly to the coding and validation
+efforts of openmm_ramd (listed an alphabetical order of last name). 
+Thanks also to everyone who has helped or will help improve this project by 
+providing feedback, bug reports, or other comments.
+
+* Rommie Amaro (principal investigator)
+* Anson Noland (contributor)
+* Lane Votapka (lead developer)
+
 ### Copyright
 
 Copyright (c) 2023, Lane Votapka

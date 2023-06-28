@@ -32,6 +32,7 @@ class functional_expansion_1d_ramd():
     def make_zeroth_order_terms(self):
         # inverse times for each slice of xi
         self.flux_array = np.zeros(self.n_xi)
+        self.time_integrals_xi1 = None
         start_index = int((self.b - self.a)/self.h_z)
         #print("start_index:", start_index)
         for i, xi in enumerate(self.xi_s):
@@ -39,11 +40,12 @@ class functional_expansion_1d_ramd():
             #print("i:", i, "time_start_to_finish:", time_start_to_finish)
             self.flux_array[i] = 1.0 / time_start_to_finish
             
+        print("self.flux_array:", self.flux_array)
         self.T = self.xi_span / sp_int.simps(self.flux_array, dx=self.h_xi)
-        #print("T:", self.T)
+        print("T:", self.T)
         
     def make_first_order_terms(self):
-        time_integrals_xi = np.zeros(self.n_xi)
+        self.time_integrals_xi1 = np.zeros(self.n_xi)
         for i, xi in enumerate(self.xi_s):
             time_span_b_to_z = np.zeros(self.n)
             for j, z in enumerate(self.z_s):
@@ -57,14 +59,19 @@ class functional_expansion_1d_ramd():
                 time_span_z_to_c[j] = self.xi_bin_time_profiles[i, -1, j]
             integrated_time_z_to_c = sp_int.simps(time_span_z_to_c, dx=self.h_z)
             
-            time_integrals_xi[i] \
+            time_value \
                 = (boundary_term1 - integrated_time_b_to_z \
                    - integrated_time_z_to_c) * self.flux_array[i]**2 * xi
+            if np.isfinite(time_value):
+                self.time_integrals_xi1[i] = time_value
+            else:
+                self.time_integrals_xi1[i] = 0.0
             
-        time_integral = sp_int.simps(time_integrals_xi, dx=self.h_xi) \
+        time_integral = sp_int.simps(self.time_integrals_xi1, dx=self.h_xi) \
             * self.T**2 / self.xi_span
-        self.first_order_correction = -self.beta*self.A*time_integral*self.T
-        
+        self.exponent1 = self.beta*self.A*time_integral/self.T
+        self.first_order_correction = self.T * np.exp(self.exponent1)
+        print("self.first_order_correction:", self.first_order_correction)
         return
     
     def make_second_order_terms(self):
@@ -116,63 +123,104 @@ class functional_expansion_1d_ramd():
             
             # Test the off-diagonal b to z
             
-            time_span_off_diag_b_to_z = np.zeros(self.n)
+            # boundary term b to z
+            integral_span_inner1 = np.zeros(self.n)
+            for j1, z in enumerate(self.z_s):
+                integral_span_inner1[j1] = self.xi_bin_time_profiles[i, -1, j1]
+            off_diag_b_to_z_boundary_term = self.c \
+                * sp_int.simps(integral_span_inner1, dx=self.h_z)
+            
+            time_span_zprime_to_z = np.zeros(self.n)
             for j1, z in enumerate(self.z_s):
                 integral_span_inner1 = np.zeros(j1+1)
                 for j2 in range(j1+1):
-                   
                     integral_span_inner1[j2] \
-                        = self.xi_bin_time_profiles[i, j2, 0]
+                        = self.xi_bin_time_profiles[i, j2, j1]
                 
                 time_b_to_z = sp_int.simps(integral_span_inner1, dx=self.h_z)
-                time_span_off_diag_b_to_z[j1] = time_b_to_z
+                time_span_zprime_to_z[j1] = time_b_to_z
             
-            integrated_time_b_to_z \
-                = sp_int.simps(time_span_off_diag_b_to_z, dx=self.h_z)
+            off_diag_zprime_to_z = sp_int.simps(
+                time_span_zprime_to_z, dx=self.h_z)
             
-            # off diagonal boundary term c**2
-            boundary_term_b_to_c1 = (self.c-self.a)**2 \
-                * self.xi_bin_time_profiles[i, -1, 0]
-            
-            # off diagonal boundary term 2*c
+            """ #TODO: marked for removal
+            # boundary term z to c
             integral_span_inner1 = np.zeros(self.n)
-            for j, z in enumerate(self.z_s):
-                integral_span_inner1[j] = self.xi_bin_time_profiles[i, j, 0]
-            boundary_term_b_to_c2 = 2.0 * (self.c-self.a) \
-                * sp_int.simps(integral_span_inner1, dx=self.h_z)
+            for j2, z in enumerate(self.z_s):
+                integral_span_inner1[j2] = self.xi_bin_time_profiles[i, -1, j1]
+            off_diag_z_to_c_boundary_term = self.c * sp_int.simps(integral_span_inner1, dx=self.h_z)
+            """
             
-            off_diag_b_to_z = boundary_term_b_to_c1 - boundary_term_b_to_c2 \
-                + time_b_to_z
-            
-            # off diagonal z to c
-            time_span_z_to_c = np.zeros(self.n)
+            time_span_z_to_zprime = np.zeros(self.n)
             for j1, z in enumerate(self.z_s):
                 integral_span_inner1 = np.zeros(self.n-j1)
                 for j2 in range(j1, self.n):
-                    index2 = self.n-j2-1
-                    
+                    index2 = j2 - j1
                     integral_span_inner1[index2] \
-                        = self.xi_bin_time_profiles[i, -1, j2]
+                        = self.xi_bin_time_profiles[i, j1, j2]
                 
-                time_z_to_c = sp_int.simps(integral_span_inner1, dx=self.h_z)
-                time_span_z_to_c[j1] = time_z_to_c
+                time_b_to_z = sp_int.simps(integral_span_inner1, dx=self.h_z)
+                time_span_z_to_zprime[j1] = time_b_to_z
             
-            time_z_to_c = sp_int.simps(time_span_z_to_c, dx=self.h_z)
-            off_diag_est = off_diag_b_to_z + time_z_to_c
-            time_integrals_xi[i] = (-on_diag_est + off_diag_est) \
-                * self.flux_array[i]**2 * xi
+            off_diag_z_to_zprime = sp_int.simps(
+                time_span_z_to_zprime, dx=self.h_z)
+            
+            off_diag_est = 2.0 * off_diag_b_to_z_boundary_term \
+                - off_diag_zprime_to_z - off_diag_z_to_zprime
+                
+            time_value = (-on_diag_est + off_diag_est) \
+                * self.flux_array[i]**2 * xi**2
+            if np.isfinite(time_value):
+                time_integrals_xi[i] = time_value
+            else:
+                time_integrals_xi[i] = 0.0
+            print("xi:", xi, "time_integrals_xi[i]:", time_integrals_xi[i])
         
         # Down here, integrate over u values
-        time_integral = sp_int.simps(time_integrals_xi, dx=self.h_xi) \
+        time_integral = -sp_int.simps(time_integrals_xi, dx=self.h_xi) \
             * self.T**2 / self.xi_span
-        #print("time_integral o2:", time_integral)
-        # TODO: missing a lot of stuff here...
-        self.second_order_correction = self.beta**2*self.A**2*time_integral/2.0
+        time_integrals_xi1_flux3 = np.zeros(self.n_xi)
         
-    def make_second_order_time_estimate(self):
+        term1 = 2 * sp_int.simps(self.time_integrals_xi1, dx=self.h_xi)**2 \
+            * self.T**3 / self.xi_span**2
+        
+        for i, xi in enumerate(self.xi_s):
+            time_integrals_xi1_flux3[i] = self.time_integrals_xi1[i]**2 \
+                / self.flux_array[i]
+        term2 = -2 * sp_int.simps(time_integrals_xi1_flux3, dx=self.h_xi) \
+            * self.T**2 / self.xi_span
+        
+        term3 = time_integral
+        print("term1:", term1)
+        print("term2:", term2)
+        print("term3:", term3)
+        term_sum = term1 + term2 + term3
+        exponent2_a = self.beta**2*self.A**2*term_sum \
+            / self.T
+        exponent2_b = (self.exponent1 / self.T)**2
+        self.exponent2 = (exponent2_a - exponent2_b)/2.0
+        self.second_order_correction = self.first_order_correction \
+            * np.exp(self.exponent2)
+        #self.second_order_correction = self.beta**2*self.A**2*time_integral/2.0
+    
+    # Truncated Taylor series
+    def time_estimate_taylor_series_second_order(self):
         self.make_zeroth_order_terms()
         self.make_first_order_terms()
         self.make_second_order_terms()
-        time_estimate = self.T*np.exp(self.first_order_correction)\
-            *np.exp(self.second_order_correction)
+        time_estimate = self.second_order_correction
+        return time_estimate
+    
+    def time_estimate_pade_approx_second_order(self):
+        """
+        I'M DOING THIS WRONG: does there need to be an accounting for
+        the independent variable (the force constant)?
+        """
+        self.make_zeroth_order_terms()
+        self.make_first_order_terms()
+        self.make_second_order_terms()
+        a_0 = np.log(self.T)
+        a_1 = self.exponent1
+        a_2 = self.exponent2
+        time_estimate = np.exp((a_0+(a_1-(a_2*a_0/a_1)))/(1.0-(a_2/a_1)))
         return time_estimate

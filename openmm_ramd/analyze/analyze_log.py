@@ -8,17 +8,21 @@ that will allow one to expand the residence time in a Taylor series expansion
 according to sigma-RAMD theory.
 """
 
-import sys
 import argparse
 
 import numpy as np
+from openmm import unit
 
 import parser
 import milestoning
 import sigma_ramd
 
+kB_kcal_per_mol_per_kelvin = unit.MOLAR_GAS_CONSTANT_R.in_units_of(
+    unit.kilocalories_per_mole / unit.kelvin)
+
+# TODO: break some of this code down into smaller functions
 def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5, 
-                verbose=True):
+                verbose=True, toy_mode=False):
     if verbose:
         print(f"Using {num_milestones} milestones.")
         print(f"Using {num_xi_bins} angle bins.")
@@ -27,17 +31,20 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     forceOutFreq = None
     forceRAMD = None
     timeStep = None
+    temperature = None
     for ramd_log_filename in ramd_log_file_list:
-        trajectories, forceOutFreq_, forceRAMD_, timeStep_ \
-            = parser.parse_ramd_log_file(ramd_log_filename)
+        trajectories, forceOutFreq_, forceRAMD_, timeStep_, num_trajectories_, \
+            temperature_= parser.parse_ramd_log_file(ramd_log_filename)
         if forceOutFreq is None:
             forceOutFreq = forceOutFreq_
             forceRAMD = forceRAMD_
             timeStep = timeStep_
+            temperature = temperature_
         else:
             assert forceOutFreq == forceOutFreq_, "RAMD logs contain differing forceOutFreq values."
             assert forceRAMD == forceRAMD_, "RAMD logs contain differing forceRAMD values."
             assert timeStep == timeStep_, "RAMD logs contain differing timeStep values."
+            assert temperature == temperature_, "RAMD logs contain differing temperature values."
             
         trajectory_list += trajectories
     
@@ -47,15 +54,16 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
         print("forceOutFreq:", forceOutFreq)
         print("forceRAMD:", forceRAMD, "kcal/(mole * Angstrom)")
         print("timeStep:", timeStep, "ps")
+        print("temperature:", temperature, "K")
     
     # Each trajectory represents a set of frames between force changes
     # Align the trajectories and convert to 1D, and xi values
-    one_dim_trajs = parser.condense_trajectories(trajectories)
+    one_dim_trajs = parser.condense_trajectories(trajectories, onlyZ=toy_mode)
     
     #Construct a milestoning model based on trajectory fragments
     milestones, min_location, max_location, starting_cv_val \
         = milestoning.uniform_milestone_locations(one_dim_trajs, num_milestones)
-        
+    
     xi_bins = []
     for j in range(num_xi_bins):
         xi_bins.append([])
@@ -77,25 +85,34 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     xi_bin_time_profiles = np.zeros((num_xi_bins, num_milestones, num_milestones))
     for i in range(num_xi_bins):
         if verbose:
-            print(f"num in bin {i}: {len(xi_bins[i])}")
+            print(f"num trajectories in bin {i}: {len(xi_bins[i])}")
         xi_bin_trajs = xi_bins[i]
-        count_matrix, time_vector, rate_matrix, transition_matrix \
-            = milestoning.make_milestoning_model(xi_bin_trajs, milestones, frame_time, num_milestones)
+        count_matrix, time_vector, time_vector_up, time_vector_down, \
+            transition_matrix, avg_time_vector, avg_time_vector_up, \
+            avg_time_vector_down, rate_matrix \
+            = milestoning.make_milestoning_model(
+                xi_bin_trajs, milestones, frame_time, num_milestones)
         
         # use the milestoning model to construct time profiles
         
-        time_profile_matrix = milestoning.make_time_profiles(transition_matrix, time_vector, num_milestones)
+        time_profile_matrix = milestoning.make_time_profiles(
+            transition_matrix, avg_time_vector_up, avg_time_vector_down, 
+            num_milestones)
         xi_bin_time_profiles[i,:,:] = time_profile_matrix[:,:]
         
     # Use sigma-RAMD to analyze
-    beta=0.0 # TODO: fill out
+    beta = 1.0 / (temperature * unit.kelvin * kB_kcal_per_mol_per_kelvin)
+    forceRAMD = forceRAMD * unit.kilocalories_per_mole
+    print("beta:", beta)
+    print("forceRAMD:", forceRAMD)
     calc = sigma_ramd.functional_expansion_1d_ramd(
         xi_bin_time_profiles, force_constant=forceRAMD, beta=beta,
         min_cv_val=min_location, max_cv_val=max_location, 
         starting_cv_val=starting_cv_val)
-    time_estimate = calc.make_second_order_time_estimate()
-    print("time_estimate:", time_estimate)
-        
+    time_estimate = calc.time_estimate_taylor_series_second_order()
+    return time_estimate
+
+# TODO: add Torque balancing in the RAMD.
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description=__doc__)
     argparser.add_argument(
@@ -108,11 +125,20 @@ if __name__ == "__main__":
     argparser.add_argument(
         "-a", "--numAngleBins", dest="numAngleBins", default=5,
         help="The number of bins to divide the force vectors into.", type=int)
+    argparser.add_argument(
+        "-t", "--toyMode", dest="toyMode", default=False,
+        help="In toy mode, we assume that the main CV of the simulation is "\
+        "the Z-axis of the zeroth particle. In contrast, the CV of a non-"
+        "toy system is found using a more complex procedure.", 
+        action="store_true")
     
     args = argparser.parse_args()
     args = vars(args)
     ramdLogFiles = args["ramdLogFiles"]
     numMilestones = args["numMilestones"]
     numAngleBins = args["numAngleBins"]
+    toyMode = args["toyMode"]
     
-    analyze_log(ramdLogFiles, numMilestones, numAngleBins)
+    time_estimate = analyze_log(ramdLogFiles, numMilestones, numAngleBins,
+                                toy_mode=toyMode)
+    print("Estimated unbiased time:", time_estimate)

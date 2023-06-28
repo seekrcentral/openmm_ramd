@@ -29,7 +29,7 @@ TEST_DIRECTORY = os.path.dirname(__file__)
 ROOT_DIRECTORY = os.path.join(TEST_DIRECTORY, "..")
 
 def make_openmm_ramd_simulation_object(
-        log_file_name=None, ramdSteps=10, rMinRamd=0.025, forceOutFreq=10, 
+        logFileName=None, ramdSteps=10, rMinRamd=0.025, forceOutFreq=10, 
         maxDist=12.0):
     temperature = 298.15 * unit.kelvin
     ramd_force_magnitude = 14.0 * unit.kilocalories_per_mole / unit.angstrom
@@ -60,7 +60,7 @@ def make_openmm_ramd_simulation_object(
         prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
         rec_indices, ramdSteps=ramdSteps, rMinRamd=rMinRamd, 
         forceOutFreq=forceOutFreq, maxDist=maxDist,
-        log_file_name=log_file_name)
+        logFileName=logFileName)
     
     simulation.context.setPositions(mypdb.positions)
     simulation.context.setPeriodicBoxVectors(*box_vectors)
