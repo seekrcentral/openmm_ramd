@@ -13,9 +13,9 @@ import argparse
 import numpy as np
 from openmm import unit
 
-import parser
-import milestoning
-import sigma_ramd
+import openmm_ramd.analyze.parser as parser
+import openmm_ramd.analyze.milestoning as milestoning
+import openmm_ramd.analyze.sigme_ramd as sigma_ramd
 
 kB_kcal_per_mol_per_kelvin = unit.MOLAR_GAS_CONSTANT_R.in_units_of(
     unit.kilocalories_per_mole / unit.kelvin)
