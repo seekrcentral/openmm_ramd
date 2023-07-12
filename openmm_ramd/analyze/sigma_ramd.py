@@ -5,12 +5,17 @@ a RAMD log file, or perhaps some other means.
 
 import numpy as np
 import scipy.integrate as sp_int
+import matplotlib.pyplot as plt
+
+def midpoint_Riemann(data, dx):
+    return dx * np.sum(data)
 
 class functional_expansion_1d_ramd():
-    def __init__(self, xi_bin_time_profiles, force_constant, beta, 
+    def __init__(self, xi_bin_time_profiles, xi_bin_times, force_constant, beta, 
                  min_cv_val, max_cv_val, starting_cv_val):
         self.xi_bin_time_profiles = xi_bin_time_profiles
         [num_xi_bins, num_milestones, dummy] = xi_bin_time_profiles.shape
+        self.xi_bin_times = xi_bin_times
         #self.num_milestones = num_milestones
         self.n = num_milestones
         self.n_xi = num_xi_bins
@@ -23,9 +28,12 @@ class functional_expansion_1d_ramd():
         self.xi_a = -1.0
         self.xi_b = 1.0
         self.xi_span = self.xi_b - self.xi_a
-        self.h_xi = self.xi_span / (self.n_xi-1)
+        self.h_xi = self.xi_span / (self.n_xi)
         self.z_s = np.linspace(self.a, self.c, self.n)
-        self.xi_s = np.linspace(self.xi_a, self.xi_b, self.n_xi)
+        xi_bins = np.linspace(self.xi_a, self.xi_b, self.n_xi+1)
+        self.xi_s = np.zeros(self.n_xi)
+        for i in range(self.n_xi):
+            self.xi_s[i] = 0.5*(xi_bins[i] + xi_bins[i+1])
         return
     
     
@@ -36,15 +44,19 @@ class functional_expansion_1d_ramd():
         start_index = int((self.b - self.a)/self.h_z)
         #print("start_index:", start_index)
         for i, xi in enumerate(self.xi_s):
-            time_start_to_finish = self.xi_bin_time_profiles[i, -1, start_index]
+            time_start_to_finish = self.xi_bin_times[i]
             #print("i:", i, "time_start_to_finish:", time_start_to_finish)
             self.flux_array[i] = 1.0 / time_start_to_finish
             
         print("self.flux_array:", self.flux_array)
-        self.T = self.xi_span / sp_int.simps(self.flux_array, dx=self.h_xi)
+        #self.T = self.xi_span / sp_int.simps(self.flux_array, dx=self.h_xi)
+        self.T = self.xi_span / midpoint_Riemann(self.flux_array, dx=self.h_xi)
         print("T:", self.T)
         
     def make_first_order_terms(self):
+        boundary_terms = np.zeros(self.n_xi)
+        integrated_times_b_to_z = np.zeros(self.n_xi)
+        integrated_times_z_to_c = np.zeros(self.n_xi)
         self.time_integrals_xi1 = np.zeros(self.n_xi)
         for i, xi in enumerate(self.xi_s):
             time_span_b_to_z = np.zeros(self.n)
@@ -53,6 +65,9 @@ class functional_expansion_1d_ramd():
             integrated_time_b_to_z = sp_int.simps(time_span_b_to_z, dx=self.h_z)
             
             boundary_term1 = (self.c-self.a)*self.xi_bin_time_profiles[i, -1, 0]
+            # TODO: check what is valid to do here for a source a != b
+            #boundary_term1 = (self.c-self.a)*self.xi_bin_times[i]
+            #boundary_term1 = (self.c-self.b)*self.xi_bin_times[i]
             
             time_span_z_to_c = np.zeros(self.n)
             for j, z in enumerate(self.z_s):
@@ -62,16 +77,31 @@ class functional_expansion_1d_ramd():
             time_value \
                 = (boundary_term1 - integrated_time_b_to_z \
                    - integrated_time_z_to_c) * self.flux_array[i]**2 * xi
+            boundary_terms[i] = boundary_term1
+            integrated_times_b_to_z[i] = integrated_time_b_to_z
+            integrated_times_z_to_c[i] = integrated_time_z_to_c
+            self.time_integrals_xi1[i] = time_value
             if np.isfinite(time_value):
                 self.time_integrals_xi1[i] = time_value
             else:
                 self.time_integrals_xi1[i] = 0.0
             
-        time_integral = sp_int.simps(self.time_integrals_xi1, dx=self.h_xi) \
+        #print("boundary_terms:", boundary_terms)
+        #plt.plot(self.xi_s, boundary_terms)
+        #plt.ylim((-0.0, 400.0))
+        #plt.show()
+        
+        time_integral = midpoint_Riemann(
+            self.time_integrals_xi1, dx=self.h_xi) \
             * self.T**2 / self.xi_span
-        self.exponent1 = self.beta*self.A*time_integral/self.T
-        self.first_order_correction = self.T * np.exp(self.exponent1)
+        #print("time_integral:", time_integral)
+        #print("self.beta:", self.beta)
+        #print("self.A:", self.A)
+        self.exponent1 = self.beta*self.A*time_integral
+        #print("self.exponent1:", self.exponent1)
+        self.first_order_correction = self.T * np.exp(self.exponent1/self.T)
         print("self.first_order_correction:", self.first_order_correction)
+        
         return
     
     def make_second_order_terms(self):
@@ -135,7 +165,7 @@ class functional_expansion_1d_ramd():
                 integral_span_inner1 = np.zeros(j1+1)
                 for j2 in range(j1+1):
                     integral_span_inner1[j2] \
-                        = self.xi_bin_time_profiles[i, j2, j1]
+                        = self.xi_bin_time_profiles[i, j1, j2]
                 
                 time_b_to_z = sp_int.simps(integral_span_inner1, dx=self.h_z)
                 time_span_zprime_to_z[j1] = time_b_to_z
@@ -143,21 +173,13 @@ class functional_expansion_1d_ramd():
             off_diag_zprime_to_z = sp_int.simps(
                 time_span_zprime_to_z, dx=self.h_z)
             
-            """ #TODO: marked for removal
-            # boundary term z to c
-            integral_span_inner1 = np.zeros(self.n)
-            for j2, z in enumerate(self.z_s):
-                integral_span_inner1[j2] = self.xi_bin_time_profiles[i, -1, j1]
-            off_diag_z_to_c_boundary_term = self.c * sp_int.simps(integral_span_inner1, dx=self.h_z)
-            """
-            
             time_span_z_to_zprime = np.zeros(self.n)
             for j1, z in enumerate(self.z_s):
                 integral_span_inner1 = np.zeros(self.n-j1)
                 for j2 in range(j1, self.n):
                     index2 = j2 - j1
                     integral_span_inner1[index2] \
-                        = self.xi_bin_time_profiles[i, j1, j2]
+                        = self.xi_bin_time_profiles[i, j2, j1]
                 
                 time_b_to_z = sp_int.simps(integral_span_inner1, dx=self.h_z)
                 time_span_z_to_zprime[j1] = time_b_to_z
@@ -167,33 +189,47 @@ class functional_expansion_1d_ramd():
             
             off_diag_est = 2.0 * off_diag_b_to_z_boundary_term \
                 - off_diag_zprime_to_z - off_diag_z_to_zprime
-                
+            
+            #print("xi:", xi, "on_diag_est:", on_diag_est, "off_diag_est:", off_diag_est)
+            #print("xi:", xi, "off_diag_b_to_z_boundary_term:", off_diag_b_to_z_boundary_term, 
+            #                 "off_diag_zprime_to_z:", off_diag_zprime_to_z,
+            #                 "off_diag_z_to_zprime:", off_diag_z_to_zprime)
+            
             time_value = (-on_diag_est + off_diag_est) \
                 * self.flux_array[i]**2 * xi**2
             if np.isfinite(time_value):
                 time_integrals_xi[i] = time_value
             else:
                 time_integrals_xi[i] = 0.0
-            print("xi:", xi, "time_integrals_xi[i]:", time_integrals_xi[i])
+            #print("xi:", xi, "time_integrals_xi[i]:", time_integrals_xi[i])
         
         # Down here, integrate over u values
-        time_integral = -sp_int.simps(time_integrals_xi, dx=self.h_xi) \
+        time_integral = -midpoint_Riemann(time_integrals_xi, dx=self.h_xi) \
             * self.T**2 / self.xi_span
         time_integrals_xi1_flux3 = np.zeros(self.n_xi)
         
-        term1 = 2 * sp_int.simps(self.time_integrals_xi1, dx=self.h_xi)**2 \
+        #plt.plot(self.xi_s, time_integrals_xi)
+        #plt.ylim((-4000.0, 4000.0))
+        #plt.show()
+        
+        term1 = 2 * midpoint_Riemann(self.time_integrals_xi1, dx=self.h_xi)**2 \
             * self.T**3 / self.xi_span**2
         
         for i, xi in enumerate(self.xi_s):
-            time_integrals_xi1_flux3[i] = self.time_integrals_xi1[i]**2 \
+            time_value = self.time_integrals_xi1[i]**2 \
                 / self.flux_array[i]
-        term2 = -2 * sp_int.simps(time_integrals_xi1_flux3, dx=self.h_xi) \
+            if np.isfinite(time_value):
+                time_integrals_xi1_flux3[i] = time_value
+            else:
+                time_integrals_xi1_flux3[i] = 0.0
+            
+        term2 = -2 * midpoint_Riemann(time_integrals_xi1_flux3, dx=self.h_xi) \
             * self.T**2 / self.xi_span
         
         term3 = time_integral
-        print("term1:", term1)
-        print("term2:", term2)
-        print("term3:", term3)
+        #print("term1:", term1)
+        #print("term2:", term2)
+        #print("term3:", term3)
         term_sum = term1 + term2 + term3
         exponent2_a = self.beta**2*self.A**2*term_sum \
             / self.T

@@ -8,7 +8,7 @@ in a sigma-RAMD analysis.
 import numpy as np
 
 
-def uniform_milestone_locations(one_dim_trajs, num_milestones):
+def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
     """
     Define a set of milestone locations uniformly spread.
     """
@@ -31,17 +31,21 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones):
     
     assert starting_cv_val is not None, "No starting CV value found."
     
-    span = max_location - min_location
-    h = span / (num_milestones + 1)
-    milestones = []
-    for i in range(num_milestones):
-        milestone = h*(i+1)
+    start_milestone_location = 0.5 * (starting_cv_val + min_location)
+    span = maxDist - starting_cv_val
+    h = span / (num_milestones - 2)
+    milestones = [start_milestone_location]
+    for i in range(num_milestones-1):
+        milestone = starting_cv_val + h*i
         milestones.append(milestone)
-        
-    return milestones, min_location, max_location, starting_cv_val
+    
+    starting_index = 1
+    return milestones, min_location, max_location, starting_cv_val, \
+        starting_index
     
 def make_milestoning_model(
         xi_bin_trajs, milestones, frame_time, num_milestones):
+    frame_time = float(frame_time)
     count_matrix = np.zeros((num_milestones, num_milestones), dtype=np.int32)
     time_vector = np.zeros((num_milestones, 1))
     time_vector_up = np.zeros((num_milestones, 1))
@@ -52,15 +56,16 @@ def make_milestoning_model(
     
     for i, traj in enumerate(xi_bin_trajs):
         src_milestone = None
-        src_time = 0.0
         new_cell_id = None
-        src_time = -float(frame_time)
+        #src_time = -frame_time
+        #src_time_above = 
+        #src_time_below = 
         for j, frame in enumerate(traj):
             [cv_val, xi_val] = frame
             # Find what cell it's in
             old_cell_id = new_cell_id
             new_cell_id = num_milestones
-            src_time += float(frame_time)
+            #src_time += frame_time
             for k, milestone in enumerate(milestones):
                 if cv_val < milestone:
                     new_cell_id = k
@@ -73,35 +78,42 @@ def make_milestoning_model(
                     if src_milestone is not None:
                         assert src_milestone != dest_milestone
                         count_matrix[dest_milestone, src_milestone] += 1
-                        time_vector[src_milestone, 0] += src_time
-                        if dest_milestone > src_milestone:
-                            time_vector_up[src_milestone, 0] += src_time
-                        else:
-                            time_vector_down[src_milestone, 0] += src_time
+                        #recorded_time = (src_time - frame_time)
+                        #time_vector[src_milestone, 0] += recorded_time
+                        #if dest_milestone > src_milestone:
+                        #    time_vector_up[src_milestone, 0] += recorded_time
+                        #else:
+                        #    time_vector_down[src_milestone, 0] += recorded_time
                         
                     src_milestone = dest_milestone
-                    src_time = 0.0
-                
+                    #src_time = -frame_time
+                    
+            if src_milestone is not None:
+                time_vector[src_milestone, 0] += frame_time
+                if cv_val > milestones[src_milestone]:
+                    time_vector_up[src_milestone, 0] += frame_time
+                else:
+                    time_vector_down[src_milestone, 0] += frame_time
+    
+    
     transition_matrix = np.zeros((num_milestones, num_milestones))
     for i in range(num_milestones): # column index
         column_sum = np.sum(count_matrix[:,i])
+        if column_sum > 0.0:
+            avg_time_vector[i, 0] = time_vector[i, 0] / column_sum
+        column_sum_up = np.sum(count_matrix[i+1:,i])
+        if column_sum_up > 0.0:
+            avg_time_vector_up[i, 0] = time_vector_up[i, 0] / column_sum_up
+        column_sum_down = np.sum(count_matrix[:i,i])
+        if column_sum_down > 0.0:
+            avg_time_vector_down[i, 0] = time_vector_down[i, 0] / column_sum_down
+        
         for j in range(num_milestones): # row index
             if column_sum == 0.0:
                 transition_matrix[j,i] = 0.0
             else:
                 transition_matrix[j,i] = count_matrix[j,i] / column_sum
-                avg_time_vector[i, 0] = time_vector[i, 0] / column_sum
-                if j > i:
-                    if count_matrix[j,i] > 0:
-                        avg_time_vector_up[i, 0] = time_vector_up[i, 0] / count_matrix[j,i]
-                    
-                elif j < i:
-                    if count_matrix[j,i] > 0:
-                        avg_time_vector_down[i, 0] = time_vector_down[i, 0] / count_matrix[j,i]
-                    
-                else:
-                    pass
-    
+                
     rate_matrix = np.zeros((num_milestones, num_milestones))
     for i in range(num_milestones):
         for j in range(num_milestones):
@@ -110,30 +122,56 @@ def make_milestoning_model(
             else:
                 rate_matrix[i,j] = count_matrix[i,j] / time_vector[j,0]
     
-    #print("rate_matrix:", rate_matrix)
-    
+        rate_matrix[i,i] = -np.sum(count_matrix[:,i])
+        
     return count_matrix, time_vector, time_vector_up, time_vector_down, \
         transition_matrix, avg_time_vector, avg_time_vector_up, \
         avg_time_vector_down, rate_matrix
 
-def make_time_profiles(transition_matrix, time_vector_up, time_vector_down, num_milestones):
+def compute_residence_time(transition_matrix, avg_time_vector, num_milestones,
+                           start_milestone):
+    if np.sum(transition_matrix[-1,:]) == 0.0:
+        return np.inf
+    identity = np.identity(num_milestones)
+    transition_matrix_with_sink = np.copy(transition_matrix)
+    transition_matrix_with_sink[-1,:] = 0.0
+    transition_matrix_with_sink[:,-1] = 0.0
+    I_minus_K = identity-transition_matrix_with_sink
+    try:
+        geom_series = np.linalg.inv(I_minus_K)
+    except np.linalg.LinAlgError:
+        return np.inf
+    
+    rate_matrix = geom_series # - identity
+    times = avg_time_vector.T @ rate_matrix
+    residence_time = times[0, start_milestone]
+    return residence_time
+
+def make_time_profiles(transition_matrix, avg_time_vector, avg_time_vector_up, 
+                       avg_time_vector_down, num_milestones):
     transit_time_matrix = np.zeros((num_milestones, num_milestones))
     identity = np.identity(num_milestones)
     
     time_vector = np.zeros((num_milestones, 1))
-    time_vector[0, 0] = time_vector_up[0, 0]
-    time_vector[num_milestones-1, 0] = time_vector_down[num_milestones-1, 0]
+    time_vector[0, 0] = avg_time_vector_up[0, 0]
+    #time_vector[0, 0] = avg_time_vector[0, 0]
+    time_vector[num_milestones-1, 0] = avg_time_vector_down[num_milestones-1, 0]
     for i in range(1, num_milestones-1):
-        P_up = transition_matrix[i+1, i]
-        P_down = transition_matrix[i-1, i]
-        time_vector[i, 0] = P_up * time_vector_up[i, 0] + P_down \
-            * time_vector_down[i, 0]
+        #P_up = transition_matrix[i+1, i]
+        #P_down = transition_matrix[i-1, i]
+        #time_vector[i, 0] = P_up * avg_time_vector_up[i, 0] + P_down \
+        #    * avg_time_vector_down[i, 0]
+        time_vector[i, 0] = avg_time_vector[i, 0]
     
     for i in range(num_milestones):
         for j in range(num_milestones):
             if i == j:
                 transit_time_matrix[i, j] = 0.0
             else:
+                if np.sum(transition_matrix[i,:]) == 0.0:
+                    transit_time_matrix[i,:] = np.inf
+                    continue
+                
                 transition_matrix_with_sink = np.copy(transition_matrix[:,:])
                 time_vector_adjusted = np.copy(time_vector[:,:])
                 transition_matrix_with_sink[i,:] = 0.0
@@ -141,20 +179,25 @@ def make_time_profiles(transition_matrix, time_vector_up, time_vector_down, num_
                 # Prevent probability from flowing away from the sink
                 if (i < j):
                     # It cannot flow 'forwards': the sink is behind
+                    # Deactivate all states up to the sink
+                    transition_matrix_with_sink[:,:i] = 0.0
                     if j < num_milestones - 1: 
-                        transition_matrix_with_sink[j+1,j] = 0.0
+                        transition_matrix_with_sink[:,j] = 0.0
                         if j-1 != i:
                             transition_matrix_with_sink[j-1,j] = 1.0
-                        time_vector_adjusted[j, 0] = time_vector_down[j, 0]
+                        time_vector_adjusted[j, 0] = avg_time_vector_down[j, 0]
+                        time_vector_adjusted[j+1:, 0] = 0.0
                     
                 elif (i > j): 
                     # It cannot flow "backwards": the sink is ahead
+                    # Deactivate all states beyond the sink
+                    transition_matrix_with_sink[:,i:] = 0.0
                     if j > 0:
+                        transition_matrix_with_sink[:,j] = 0.0
                         if j+1 != i:
                             transition_matrix_with_sink[j+1,j] = 1.0
-                        transition_matrix_with_sink[j-1,j] = 0.0
-                        time_vector_adjusted[j, 0] = time_vector_up[j, 0]
-                
+                        time_vector_adjusted[j, 0] = avg_time_vector_up[j, 0]
+                        time_vector_adjusted[:j, 0] = 0.0
                 
                 I_minus_K = identity-transition_matrix_with_sink
                 try:
@@ -162,19 +205,14 @@ def make_time_profiles(transition_matrix, time_vector_up, time_vector_down, num_
                     # Remove self-time
                     rate_matrix = geom_series # - identity
                     result = time_vector_adjusted.T @ rate_matrix
+                    if result[0,j] < 0.0: 
+                        print("transition_matrix_with_sink:")
+                        print(transition_matrix_with_sink)
+                        print("time_vector_adjusted:")
+                        print(time_vector_adjusted)
+                        raise Exception("Negative time detected.")
                     transit_time_matrix[i,j] = result[0,j]
                 except np.linalg.LinAlgError:
                     transit_time_matrix[i,j] = np.inf
-        
-    """ # old way
-    transit_time_matrix = np.zeros((num_milestones, num_milestones))
-    identity = np.identity(num_milestones)
-    for i in range(num_milestones):
-        transition_matrix_with_sink = np.copy(transition_matrix[:,:])
-        transition_matrix_with_sink[:,i] = 0.0
-        geom_series = np.linalg.inv(identity-transition_matrix_with_sink)
-        result = time_vector.T @ geom_series
-        transit_time_matrix[i,:] = result[0,:]
-    """
     
     return transit_time_matrix

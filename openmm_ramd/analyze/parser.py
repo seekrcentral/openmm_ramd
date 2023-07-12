@@ -43,6 +43,9 @@ def parse_ramd_log_file(ramd_log_filename):
     relative_COM_x = None
     relative_COM_y = None
     relative_COM_z = None
+    receptor_COM_x = None
+    receptor_COM_y = None
+    receptor_COM_z = None
     ligand_step = None
     ligand_COM_x = None
     ligand_COM_y = None
@@ -57,6 +60,7 @@ def parse_ramd_log_file(ramd_log_filename):
     forceRAMD = None
     timeStep = None
     temperature = None
+    maxDist = None
     old_ligand_step = None
     receptor_step = None
     accel_step = None
@@ -85,6 +89,9 @@ def parse_ramd_log_file(ramd_log_filename):
                         "forceRAMD"
                     # Also the start of a new simulation
                     num_simulations += 1
+                    old_ligand_COM_x = ligand_COM_x
+                    old_ligand_COM_y = ligand_COM_y
+                    old_ligand_COM_z = ligand_COM_z
                     new_trajectory_frame = True
                     new_trajectory = True
                     old_ligand_step = ligand_step
@@ -111,6 +118,16 @@ def parse_ramd_log_file(ramd_log_filename):
                         "temperature"
                 else:
                     temperature = temperature_
+                    
+            maxDist_search = re.match("RAMD: maxDist * (\d+\.\d*)", line)
+            if maxDist_search:
+                maxDist_ = float(maxDist_search.group(1))
+                if maxDist is not None:
+                    assert maxDist == maxDist_, \
+                        "The log file may not have conflicting values of "\
+                        "maxDist"
+                else:
+                    maxDist = maxDist_
             
             # Find the lines that indicate the ligand COM
             lig_com_search = re.match("RAMD FORCE: (\d+) > LIGAND COM IS: \[ *([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) *\]", line)
@@ -163,10 +180,10 @@ def parse_ramd_log_file(ramd_log_filename):
                     old_ligand_step, receptor_step, accel_step)
                 
             if new_trajectory:
-                
-                trajectories.append(trajectory)
-                trajectory = []
-                n_frames = 0
+                if len(trajectory) > 0:
+                    trajectories.append(trajectory)
+                    trajectory = []
+                    n_frames = 0
                 
         if n_frames > 0:
             accel_step = old_ligand_step
@@ -186,7 +203,7 @@ def parse_ramd_log_file(ramd_log_filename):
         "The variable timeStep was not assigned in the log file."
     
     return trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations, \
-        temperature
+        temperature, maxDist
 
 def condense_trajectories(trajectories, onlyZ=False):
     """
@@ -201,6 +218,9 @@ def condense_trajectories(trajectories, onlyZ=False):
         sum_ligz = 0.0
         total_points = 0
         start_accx = None
+        #if len(trajectory) == 0:
+        #    continue
+        
         for j, frame in enumerate(trajectory):
             [ligx, ligy, ligz, accx, accy, accz] = frame
             sum_ligx += ligx

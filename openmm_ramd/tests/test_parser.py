@@ -8,13 +8,14 @@ import openmm_ramd.analyze.parser as parser
 
 def test_parse_ramd_log_file(small_linear_logfile_persistent):
     [trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations,
-     temperature] = small_linear_logfile_persistent
+     temperature, maxDist] = small_linear_logfile_persistent
     assert forceOutFreq == 50
     assert forceRAMD == 0.1
     assert timeStep == 0.002
     assert len(trajectories) == 2
     assert num_simulations == 1
     assert temperature == 300.0
+    assert maxDist == 10.0
     assert np.isclose(trajectories[0][0][0], -0.11735814)
     assert np.isclose(trajectories[0][0][1], 0.59439099)
     assert np.isclose(trajectories[0][0][2], 0.07284915)
@@ -41,7 +42,7 @@ def test_parse_ramd_log_file(small_linear_logfile_persistent):
 
 def test_parse_ramd_log_file_large(large_linear_logfile_persistent):
     [trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations,
-     temperature] = large_linear_logfile_persistent
+     temperature, maxDist] = large_linear_logfile_persistent
     assert forceOutFreq == 50
     assert forceRAMD == 0.1
     assert timeStep == 0.002
@@ -51,7 +52,7 @@ def test_parse_ramd_log_file_large(large_linear_logfile_persistent):
 
 def test_condense_trajectories(small_linear_logfile_persistent):
     [trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations,
-     temperature] = small_linear_logfile_persistent
+     temperature, maxDist] = small_linear_logfile_persistent
     one_dim_trajs = parser.condense_trajectories(trajectories, onlyZ=True)
     for trajectory, one_dim_traj in zip(trajectories, one_dim_trajs):
         for frame, one_dim_frame in zip(trajectory, one_dim_traj):

@@ -5,6 +5,7 @@ Test openmm_ramd sigma_ramd.py functions.
 import numpy as np
 
 import utils
+import openmm_ramd.analyze.milestoning as milestoning
 import openmm_ramd.analyze.sigma_ramd as sigma_ramd
 
 # TODO: understand why we have to use_abs=True in this case...
@@ -44,8 +45,13 @@ def test_linear_system():
     milestones = np.linspace(min_location, max_location, num_milestones)
     xi_bin_time_profiles = make_test_xi_bin_time_profiles(
         num_xi_bins, milestones, forceRAMD, D, beta)
+    
+    xi_bin_times = np.zeros(num_xi_bins)
+    for i in range(num_xi_bins):
+        xi_bin_times[i] = xi_bin_time_profiles[i, -1, 0]
+    
     calc = sigma_ramd.functional_expansion_1d_ramd(
-        xi_bin_time_profiles, force_constant=forceRAMD, beta=beta,
+        xi_bin_time_profiles, xi_bin_times, force_constant=forceRAMD, beta=beta,
         min_cv_val=min_location, max_cv_val=max_location, 
         starting_cv_val=starting_cv_val)
     calc.make_zeroth_order_terms()
