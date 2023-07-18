@@ -41,17 +41,15 @@ class functional_expansion_1d_ramd():
         # inverse times for each slice of xi
         self.flux_array = np.zeros(self.n_xi)
         self.time_integrals_xi1 = None
-        start_index = int((self.b - self.a)/self.h_z)
-        #print("start_index:", start_index)
         for i, xi in enumerate(self.xi_s):
             time_start_to_finish = self.xi_bin_times[i]
             #print("i:", i, "time_start_to_finish:", time_start_to_finish)
             self.flux_array[i] = 1.0 / time_start_to_finish
             
-        print("self.flux_array:", self.flux_array)
+        #print("self.flux_array:", self.flux_array)
         #self.T = self.xi_span / sp_int.simps(self.flux_array, dx=self.h_xi)
         self.T = self.xi_span / midpoint_Riemann(self.flux_array, dx=self.h_xi)
-        print("T:", self.T)
+        #print("T:", self.T)
         
     def make_first_order_terms(self):
         boundary_terms = np.zeros(self.n_xi)
@@ -97,10 +95,10 @@ class functional_expansion_1d_ramd():
         #print("time_integral:", time_integral)
         #print("self.beta:", self.beta)
         #print("self.A:", self.A)
-        self.exponent1 = self.beta*self.A*time_integral
+        self.exponent1 = time_integral/self.T
         #print("self.exponent1:", self.exponent1)
-        self.first_order_correction = self.T * np.exp(self.exponent1/self.T)
-        print("self.first_order_correction:", self.first_order_correction)
+        self.first_order_correction = self.T * np.exp(self.beta*self.A*self.exponent1)
+        #print("self.first_order_correction:", self.first_order_correction)
         
         return
     
@@ -231,12 +229,11 @@ class functional_expansion_1d_ramd():
         #print("term2:", term2)
         #print("term3:", term3)
         term_sum = term1 + term2 + term3
-        exponent2_a = self.beta**2*self.A**2*term_sum \
-            / self.T
+        exponent2_a = term_sum / self.T
         exponent2_b = (self.exponent1 / self.T)**2
         self.exponent2 = (exponent2_a - exponent2_b)/2.0
         self.second_order_correction = self.first_order_correction \
-            * np.exp(self.exponent2)
+            * np.exp(self.beta**2*self.A**2*self.exponent2)
         #self.second_order_correction = self.beta**2*self.A**2*time_integral/2.0
     
     # Truncated Taylor series
@@ -249,8 +246,7 @@ class functional_expansion_1d_ramd():
     
     def time_estimate_pade_approx_second_order(self):
         """
-        I'M DOING THIS WRONG: does there need to be an accounting for
-        the independent variable (the force constant)?
+        Pade is not working very well...
         """
         self.make_zeroth_order_terms()
         self.make_first_order_terms()
@@ -258,5 +254,6 @@ class functional_expansion_1d_ramd():
         a_0 = np.log(self.T)
         a_1 = self.exponent1
         a_2 = self.exponent2
-        time_estimate = np.exp((a_0+(a_1-(a_2*a_0/a_1)))/(1.0-(a_2/a_1)))
+        time_estimate = np.exp((a_0 + (a_1-(a_2*a_0/a_1))*self.beta*self.A) \
+                               / (1.0 - (a_2/a_1)*self.beta*self.A))
         return time_estimate

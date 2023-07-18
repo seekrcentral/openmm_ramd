@@ -11,7 +11,7 @@ def slant_time(a, b, D, beta, force_constant, use_abs=False):
         dist = abs(a-b)
     else:
         dist = a-b
-    if force_constant == 0.0:
+    if np.isclose(force_constant, 0.0):
         time = dist**2/(2.0*D)
     else:
         time = ((np.exp(-beta*force_constant*dist) - 1.0)\
