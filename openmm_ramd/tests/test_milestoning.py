@@ -13,7 +13,7 @@ def test_uniform_milestone_locations(small_linear_logfile_persistent):
     [trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations,
      temperature, maxDist] = small_linear_logfile_persistent
     one_dim_trajs = parser.condense_trajectories(trajectories, onlyZ=True)
-    milestones, min_location, max_location, starting_cv_val, starting_index \
+    milestones, min_location, max_location, starting_cv_val, starting_index, h \
         = milestoning.uniform_milestone_locations(
             one_dim_trajs, num_milestones, maxDist)
     cv_vals = []
@@ -136,27 +136,10 @@ def test_make_time_profiles_slant():
     h = 1.0
     D = 1.0
     A = -0.1
-    J_a_dividedby_J_c = (np.exp(A*h)-1.0)/(1.0-np.exp(-A*h))
-    J_c_dividedby_J_a = (1.0-np.exp(-A*h))/(np.exp(A*h)-1.0)
-    P_b_to_a = 1.0/(1.0 + J_c_dividedby_J_a)
-    P_b_to_c = 1.0/(1.0 + J_a_dividedby_J_c)
-    t_b_to_a = utils.slant_time(0.0, -h, D, 1.0, A)
-    t_b_to_c = utils.slant_time(0.0, h, D, 1.0, A)
-    t = t_b_to_a * P_b_to_a + t_b_to_c * P_b_to_c
-    transition_matrix = np.zeros((num_milestones, num_milestones))
-    time_vector = np.zeros((num_milestones, 1))
-    time_vector_up = np.zeros((num_milestones, 1))
-    time_vector_down = np.zeros((num_milestones, 1))
-    transition_matrix[1, 0] = 1.0
-    transition_matrix[num_milestones-2, num_milestones-1] = 1.0
-    for i in range(1, num_milestones-1):
-        transition_matrix[i-1, i] = P_b_to_a
-        transition_matrix[i+1, i] = P_b_to_c
-    
-    for i in range(0, num_milestones):
-        time_vector[i, 0] = t
-        time_vector_up[i, 0] = t_b_to_c
-        time_vector_down[i, 0] = t_b_to_a
+    base_count = 100
+    transition_matrix, time_vector, time_vector_up, time_vector_down, \
+        rate_matrix, count_matrix = utils.slant_milestoning_model(
+            num_milestones, A, h, D, base_count)
     
     transit_time_matrix = milestoning.make_time_profiles(
         transition_matrix, time_vector, time_vector_up, time_vector_down, 
@@ -170,3 +153,59 @@ def test_make_time_profiles_slant():
     
     assert np.isclose(transit_time_matrix, reference_matrix).all()
     return
+
+def test_compute_stationary_probabilities_linear():
+    num_milestones = 11
+    start_milestone = 0
+    h = 1.0
+    D = 1.0
+    t = h**2/(2.0*D)
+    transition_matrix = np.zeros((num_milestones, num_milestones))
+    time_vector = np.zeros((num_milestones, 1))
+    transition_matrix[1, 0] = 1.0
+    transition_matrix[num_milestones-2, num_milestones-1] = 1.0
+    for i in range(1, num_milestones-1):
+        transition_matrix[i-1, i] = 0.5
+        transition_matrix[i+1, i] = 0.5
+    
+    for i in range(num_milestones):
+        time_vector[i, 0] = t
+    
+    stationary_probs = milestoning.compute_stationary_probabilities(
+        transition_matrix, time_vector, num_milestones)
+    return
+    
+def test_compute_diffusion_coefficients():
+    num_milestones = 11
+    start_milestone = 0
+    h = 1.0
+    D = 1.0
+    t = h**2/(2.0*D)
+    transition_matrix = np.zeros((num_milestones, num_milestones))
+    rate_matrix = np.zeros((num_milestones, num_milestones))
+    time_vector = np.zeros((num_milestones, 1))
+    transition_matrix[1, 0] = 1.0
+    transition_matrix[num_milestones-2, num_milestones-1] = 1.0
+    for i in range(1, num_milestones-1):
+        transition_matrix[i-1, i] = 0.5
+        transition_matrix[i+1, i] = 0.5
+    
+    for i in range(num_milestones):
+        time_vector[i, 0] = t
+    
+    for i in range(num_milestones):
+        for j in range(num_milestones):
+            rate_matrix[i, j] = transition_matrix[i, j] / time_vector[j, 0]
+    
+    diffusion_coeffs = milestoning.compute_diffusion_coefficients(
+        rate_matrix, num_milestones, h)
+    
+def test_compute_counts():
+    num_milestones = 11
+    count_matrix = np.zeros((num_milestones, num_milestones))
+    count_matrix[1, 0] = 125
+    count_matrix[num_milestones-2, num_milestones-1] = 30
+    for i in range(1, num_milestones-1):
+        count_matrix[i-1, i] = 55
+        count_matrix[i+1, i] = 55
+    counts = milestoning.compute_counts(count_matrix, num_milestones)

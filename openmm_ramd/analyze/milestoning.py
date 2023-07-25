@@ -6,7 +6,9 @@ in a sigma-RAMD analysis.
 """
 
 import numpy as np
+from scipy import linalg as la
 
+MATRIX_EXPONENTIAL = 9999999999
 
 def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
     """
@@ -31,17 +33,21 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
     
     assert starting_cv_val is not None, "No starting CV value found."
     
-    start_milestone_location = 0.5 * (starting_cv_val + min_location)
-    span = maxDist - starting_cv_val
-    h = span / (num_milestones - 2)
-    milestones = [start_milestone_location]
-    for i in range(num_milestones-1):
-        milestone = starting_cv_val + h*i
+    min_max_distance = maxDist - min_location
+    start_point_index = int((starting_cv_val - min_location) * (num_milestones - 1) / min_max_distance)
+    num_points_after = num_milestones - start_point_index - 1
+    num_points_before = num_milestones - num_points_after - 1
+    h = (maxDist - starting_cv_val) / num_points_after
+    first_milestone_location = starting_cv_val - num_points_before * h
+    milestones = [] #[start_milestone_location]
+    #for i in range(num_milestones-1):
+    for i in range(num_milestones):
+        milestone = first_milestone_location + h*i
         milestones.append(milestone)
     
-    starting_index = 1
+    #starting_index = 0
     return milestones, min_location, max_location, starting_cv_val, \
-        starting_index
+        start_point_index, h
     
 def make_milestoning_model(
         xi_bin_trajs, milestones, frame_time, num_milestones):
@@ -117,16 +123,87 @@ def make_milestoning_model(
     rate_matrix = np.zeros((num_milestones, num_milestones))
     for i in range(num_milestones):
         for j in range(num_milestones):
-            if time_vector[j,0] == 0.0:
+            if avg_time_vector[j,0] == 0.0:
                 rate_matrix[i,j] = 0.0
             else:
-                rate_matrix[i,j] = count_matrix[i,j] / time_vector[j,0]
+                rate_matrix[i,j] = transition_matrix[i,j] / avg_time_vector[j,0]
     
-        rate_matrix[i,i] = -np.sum(count_matrix[:,i])
+        rate_matrix[i,i] = -np.sum(rate_matrix[:,i])
         
     return count_matrix, time_vector, time_vector_up, time_vector_down, \
         transition_matrix, avg_time_vector, avg_time_vector_up, \
         avg_time_vector_down, rate_matrix
+
+def compute_stationary_probabilities(transition_matrix, avg_time_vector, 
+                                     num_milestones):
+    TINY_PROB = 1e-6
+    initial_prob_vector = np.zeros((1, num_milestones))
+    initial_prob_vector[0,0] = 1.0
+    
+    transition_matrix_with_leak = np.copy(transition_matrix)
+    if transition_matrix_with_leak[-2, -1] < TINY_PROB:
+        transition_matrix_with_leak[-2, -1] = 1.0
+        avg_time_vector[-1, 0] = avg_time_vector[-2, 0]
+        
+    transition_matrix_with_leak[-1, -1] += TINY_PROB
+    transition_matrix_with_leak[-2, -1] -= TINY_PROB
+    
+    transition_matrix_with_leak[0, 0] += TINY_PROB
+    transition_matrix_with_leak[1, 0] -= TINY_PROB
+    
+    for i in range(1, num_milestones-1):
+        transition_matrix_with_leak[i, i] += TINY_PROB
+        transition_matrix_with_leak[i-1, i] -= 0.5*TINY_PROB
+        transition_matrix_with_leak[i+1, i] -= 0.5*TINY_PROB
+    
+    q_i = initial_prob_vector @ np.linalg.matrix_power(
+        transition_matrix_with_leak.T, MATRIX_EXPONENTIAL)
+    q_i = q_i / np.sum(q_i)
+    p_i = np.zeros(num_milestones)
+    for i in range(num_milestones):
+        if i == 0 or i == num_milestones - 1:
+            # This is because at the ends, the reflective boundary conditions
+            #  cause the flux to be undercounted by a factor of 2
+            flux_factor = 2.0
+        else:
+            flux_factor = 1.0
+            
+        p_i[i] = q_i[0, i] * avg_time_vector[i, 0] * flux_factor
+    
+    sum_p_i = np.sum(p_i)
+    for i in range(num_milestones):
+        p_i[i] /= sum_p_i
+        
+    return p_i
+
+def compute_diffusion_coefficients(rate_matrix, num_milestones, milestone_spacing):
+    diffusion_coeffs = np.zeros(num_milestones)
+    for i in range(num_milestones):
+        if i == 0:
+            diffusion_coeffs[0] = 0.5 * milestone_spacing**2 \
+                * rate_matrix[1, 0]
+            #diffusion_coeffs[0] = milestone_spacing**2 \
+            #    * rate_matrix[1, 0]
+
+        elif i == num_milestones - 1:
+            last = num_milestones - 1
+            diffusion_coeffs[last] = 0.5 * milestone_spacing**2 \
+                * rate_matrix[last-1, last]
+            
+        else:
+            diffusion_coeffs[i] += 0.5 * milestone_spacing**2 \
+                * rate_matrix[i+1, i]
+            diffusion_coeffs[i] += 0.5 * milestone_spacing**2 \
+                * rate_matrix[i-1, i]
+            
+    return diffusion_coeffs
+
+def compute_counts(count_matrix, num_milestones):
+    counts = np.zeros(num_milestones)
+    for i in range(num_milestones):
+        counts[i] = np.sum(count_matrix[:,i])
+    
+    return counts
 
 def compute_residence_time(transition_matrix, avg_time_vector, num_milestones,
                            start_milestone):
