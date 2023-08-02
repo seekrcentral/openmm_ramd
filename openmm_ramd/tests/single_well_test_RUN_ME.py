@@ -309,7 +309,7 @@ if __name__ == "__main__":
                        h_z, start=start_z)
     #print("Expected escape time:", time1, "ps")
     
-    
+    """
     # PLOT ORIGINAL FUNCTION
     plt.plot(z_s, potential_energy1, "g", label="Potential energy $W(z) (kJ/mol)$")
     plt.plot(z_s, diffusion_coefficient1, "b", label="Diffusion coefficient $D(z) \\frac{nm^2}{ps}$")
@@ -320,7 +320,7 @@ if __name__ == "__main__":
     plt.ylim((0.0, 2.0*WELL_DEPTH))
     plt.show()
     exit()
-    
+    """
     
     stationary_dist_normalized = stationary_dist1 / sp_int.simps(
         stationary_dist1, dx=h_z)
@@ -334,6 +334,11 @@ if __name__ == "__main__":
     unslanted_energy_profiles = np.zeros((num_xi_bins, num_milestones))
     diffusion_profiles = np.zeros((num_xi_bins, num_milestones))
     counts_profiles = np.zeros((num_xi_bins, num_milestones))
+    
+    rate_matrix_sum = np.zeros((num_milestones, num_milestones))
+    transition_matrix_sum = np.zeros((num_milestones, num_milestones))
+    avg_time_vector_sum = np.zeros(num_milestones)
+    counts_sum = np.zeros(num_milestones)
     
     for i in range(num_xi_bins):
         xi = xi_values[i]
@@ -357,46 +362,79 @@ if __name__ == "__main__":
             milestones, energy_profile, -slanting_force, 
             ref_milestone_index=start_milestone_index)
         
-        unslanted_energy_profiles[i, :] = unslanted_energy_profile
-        diffusion_profiles[i, :] = diffusion_profile
-        counts_profiles[i, :] = counts
+        unslanted_rate_matrix, unslanted_transition_matrix, \
+            unslanted_time_vector \
+            = remove_slant.milestoning_statistics_from_profiles(
+                milestones, unslanted_energy_profile, diffusion_profile, beta)
         
-        stationary_probs = milestoning.compute_stationary_probabilities(
-            transition_matrix, avg_time_vector, num_milestones)
+        for j in range(num_milestones):
+            rate_matrix_sum[:, j] += counts[j] * unslanted_rate_matrix[:, j]
+            transition_matrix_sum[:, j] += counts[j] * unslanted_transition_matrix[:, j]
+            avg_time_vector_sum[j] += counts[j] * unslanted_time_vector[j]
+            counts_sum[j] += counts[j]
         
-        stationary_probs_norm = stationary_probs / sp_int.simps(stationary_probs, dx=milestone_h)
+        #unslanted_energy_profiles[i, :] = unslanted_energy_profile
+        #diffusion_profiles[i, :] = diffusion_profile
+        #counts_profiles[i, :] = counts
+        
+        recovered_stationary_probs = milestoning.compute_stationary_probabilities(
+            unslanted_transition_matrix, avg_time_vector, num_milestones)
+        
+        recovered_energy_profile = remove_slant.make_energy_profile(
+            recovered_stationary_probs, beta, start_milestone_index)
+        
+        #stationary_probs_norm = stationary_probs / sp_int.simps(stationary_probs, dx=milestone_h)
         
         # PLOT SLANTED_PROFILES
-        plt.plot(milestones, energy_profile, label=f"$\\xi$={xi:.2f}")
+        #plt.plot(milestones, energy_profile, label=f"$\\xi$={xi:.2f}")
         
         # PLOT UNSLANTED PROFILES
         #plt.plot(milestones, unslanted_energy_profile, label=f"$\\xi$={xi:.2f}")
+        
+        # PLOT RECOVERED PROFILES
+        #plt.plot(milestones, recovered_energy_profile, label=f"$\\xi$={xi:.2f}")
     
     #plt.plot(z_s, potential_energy1, "g", label="Potential energy $W(z) (kJ/mol)$")
     #plt.plot(milestones, energy_profile, "r", label="Recovered Potential energy $W(z) (kJ/mol)$")
     #plt.plot(z_s, diffusion_coefficient1, "b", label="Diffusion coefficient $D(z) \\frac{nm^2}{ps}$")
     #plt.plot(milestones, diffusion_profile, "k", label="Recovered Diffusion coefficient $D(z) \\frac{nm^2}{ps}$")
     
+    rate_matrix_avg = np.zeros((num_milestones, num_milestones))
+    transition_matrix_avg = np.zeros((num_milestones, num_milestones))
+    avg_time_vector_avg = np.zeros((num_milestones, 1))
+        
+    for j in range(num_milestones):
+        rate_matrix_avg[:, j] = rate_matrix_sum[:, j] / counts_sum[j]
+        transition_matrix_avg[:, j] = transition_matrix_sum[:, j] / counts_sum[j]
+        avg_time_vector_avg[j, 0] = avg_time_vector_sum[j] / counts_sum[j]
     
+    averaged_stationary_probs = milestoning.compute_stationary_probabilities(
+        transition_matrix_avg, avg_time_vector_avg, num_milestones)
+    
+    averaged_energy_profile = remove_slant.make_energy_profile(
+        averaged_stationary_probs, beta, start_milestone_index)
+        
     # PLOT AVG'D ENERGY PROFILE
-    """
-    energy_profile_avg, diffusion_profile_avg \
-        = remove_slant.average_unslanted_profiles(
-        num_xi_bins, num_milestones, beta, unslanted_energy_profiles,
-        diffusion_profiles, counts_profiles)
     
-    time_estimate = analyze_log.compute_time(
-        milestones, energy_profile_avg, diffusion_profile_avg, beta, 
-        start_milestone_index, bulk_milestone)
+    #energy_profile_avg, diffusion_profile_avg \
+    #    = remove_slant.average_unslanted_profiles(
+    #    num_xi_bins, num_milestones, beta, unslanted_energy_profiles,
+    #    diffusion_profiles, counts_profiles)
+    
+    #time_estimate = analyze_log.compute_time(
+    #    milestones, energy_profile_avg, diffusion_profile_avg, beta, 
+    #    start_milestone_index, bulk_milestone)
+    
+    time_estimate = analyze_log.compute_time(rate_matrix_avg, start_milestone_index, bulk_milestone)
     
     print("recovered time:", time_estimate, "ps")
     print("original time:", time1, "ps")
     
-    plt.plot(milestones, energy_profile_avg, "r", label="Recovered Potential energy $W(z) (kJ/mol)$")
-    plt.plot(milestones, diffusion_profile_avg, "k", label="Recovered Diffusion coefficient $D(z) \\frac{nm^2}{ps}$")
-    plt.plot(z_s, potential_energy1, "g", label="Potential energy $W(z) (kJ/mol)$")
-    plt.plot(z_s, diffusion_coefficient1, "b", label="Diffusion coefficient $D(z) \\frac{nm^2}{ps}$")
-    """
+    plt.plot(milestones, averaged_energy_profile, "r", label="Recovered Potential energy $W(z) (kJ/mol)$")
+    #plt.plot(milestones, diffusion_profile_avg, "k", label="Recovered Diffusion coefficient $D(z) \\frac{nm^2}{ps}$")
+    #plt.plot(z_s, potential_energy1, "g", label="Potential energy $W(z) (kJ/mol)$")
+    #plt.plot(z_s, diffusion_coefficient1, "b", label="Diffusion coefficient $D(z) \\frac{nm^2}{ps}$")
+    
     #plt.plot(z_s, stationary_dist_normalized, "g")
     #plt.plot(milestones, stationary_probs_norm, "r")
     plt.legend()

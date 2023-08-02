@@ -90,6 +90,8 @@ def get_smoluchowski_flux(z_s, energy_span, diffusion_span, beta, forward):
     
     inv_stat_dist = np.zeros(num_integration_points)
     for j in range(num_integration_points):
+        assert diffusion_span[j] > 0.0, "Diffusion must be positive. "\
+            f"diffusion_span[{j}] = {diffusion_span[j]}"
         inv_stat_dist[j] = np.exp(beta*energy_span[j])/diffusion_span[j]
     
     time_integral_span_outer = np.zeros(num_integration_points)
@@ -186,6 +188,8 @@ def milestoning_statistics_from_profiles(
         milestones, energy_profile, diffusion_profile, beta):
     num_milestones = len(milestones)
     rate_matrix = np.zeros((num_milestones, num_milestones))
+    transition_matrix = np.zeros((num_milestones, num_milestones))
+    avg_time_vector = np.zeros(num_milestones)
     for i, milestone in enumerate(milestones):
         if i == 0:
             doing_a = False
@@ -251,12 +255,16 @@ def milestoning_statistics_from_profiles(
         
         if doing_a:
             rate_matrix[i-1, i] = P_b_to_a / time
+            transition_matrix[i-1, i] = P_b_to_a
         
         if doing_c:
             rate_matrix[i+1, i] = P_b_to_c / time
+            transition_matrix[i+1, i] = P_b_to_c
         
         rate_matrix[i, i] = -1.0 / time
-    return rate_matrix
+        avg_time_vector[i] = time
+        
+    return rate_matrix, transition_matrix, avg_time_vector
 
 def average_unslanted_profiles(
         num_xi_bins, num_milestones, unitless_beta, unslanted_energy_profiles,
@@ -294,3 +302,57 @@ def average_unslanted_profiles(
     #plt.show()
     
     return energy_profile_avg, diffusion_profile_avg
+
+def unslant_transition_matrix_constant_approx(
+        milestones, transition_matrix, avg_time_vector, slanting_force, beta):
+    num_milestones = len(milestones)
+    unslanted_rate_matrix = np.zeros((num_milestones, num_milestones))
+    unslanted_transition_matrix = np.zeros((num_milestones, num_milestones))
+    unslanted_time_vector = np.zeros((num_milestones, 1))
+    
+    # i == 0
+    unslanted_transition_matrix[:,0] = transition_matrix[:,0]
+    unslanted_time_vector[0,0] = avg_time_vector[0,0]
+    
+    # i == num_milestones - 1
+    unslanted_transition_matrix[:,-1] = transition_matrix[:,-1]
+    unslanted_time_vector[-1,0] = avg_time_vector[-1,0]
+    
+    # NOTE: this theory will neglect the effects of transitions beyond the
+    # immediately adjacent milestones - creating errors, but is unavoidable.
+    
+    for i in range(1, num_milestones-1): # columns
+        assert milestones[i+1] - milestones[i] \
+            == milestones[i] - milestones[i-1], "This method only works for "\
+            "equally-spaced milestones - to leave avg. time unmodified."
+        span = milestones[i+1] - milestones[i-1]
+        
+        p_a = transition_matrix[:i,i]
+        f_a = (1.0/p_a) - 1.0
+        factor_a = np.exp(0.5 * beta * slanting_force * span)
+        new_f_a = f_a * factor_a
+        new_p_a = 1.0 / (1.0 + new_f_a)
+        
+        p_c = transition_matrix[i+1:,i]
+        f_c = (1.0/p_c) - 1.0
+        factor_c = np.exp(0.5 * beta * slanting_force * -span)
+        new_f_c = f_c * factor_c
+        new_p_c = 1.0 / (1.0 + new_f_c)
+        
+        unslanted_transition_matrix[i-1,i] = new_p_a / (new_p_a + new_p_c)
+        unslanted_transition_matrix[i-1,i] = new_p_c / (new_p_a + new_p_c)
+        
+        unslanted_time_vector[i, 0] = avg_time_vector[i, 0]
+    
+    for i in range(num_milestones):
+        for j in range(num_milestones):
+            if unslanted_time_vector[j,0] == 0.0:
+                unslanted_rate_matrix[i,j] = 0.0
+            else:
+                unslanted_rate_matrix[i,j] = unslanted_transition_matrix[i,j] \
+                    / unslanted_time_vector[j,0]
+    
+        unslanted_rate_matrix[i,i] = -np.sum(unslanted_rate_matrix[:,i]) 
+    
+    return unslanted_rate_matrix, unslanted_transition_matrix, \
+            unslanted_time_vector

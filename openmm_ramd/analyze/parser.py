@@ -173,6 +173,13 @@ def parse_ramd_log_file(ramd_log_filename):
                 new_trajectory = True
             
             if new_trajectory_frame:
+                print("n_frames:", n_frames, "relative_COM_x:", relative_COM_x,
+                      "relative_COM_y:", relative_COM_y, "relative_COM_z:", 
+                      relative_COM_z, "old_ligand_COM_x:", old_ligand_COM_x,
+                      "old_ligand_COM_y:", old_ligand_COM_y, "old_ligand_COM_z",
+                      old_ligand_COM_z)
+                assert old_ligand_COM_x is not None, \
+                    f"Error near file: {ramd_log_filename}, line: {i}"
                 n_frames = add_new_frame(
                     trajectory, n_frames, relative_COM_x, relative_COM_y, 
                     relative_COM_z, old_ligand_COM_x, old_ligand_COM_y, 

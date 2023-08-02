@@ -34,10 +34,11 @@ def make_xi_bins(num_xi_bins):
         
     return xi_bins, xi_values, xi_bins_ranges
 
-def compute_time(milestones, energy_profile_avg, diffusion_profile_avg, 
-                 beta, starting_index, bulk_milestone):
-    rate_matrix = remove_slant.milestoning_statistics_from_profiles(
-        milestones, energy_profile_avg, diffusion_profile_avg, beta)
+#def compute_time(milestones, energy_profile_avg, diffusion_profile_avg, 
+#                 beta, starting_index, bulk_milestone):
+def compute_time(rate_matrix, starting_index, bulk_milestone):
+    #rate_matrix = remove_slant.milestoning_statistics_from_profiles(
+    #    milestones, energy_profile_avg, diffusion_profile_avg, beta)
     B, tau = PyGT.tools.load_CTMC(rate_matrix)
     mfpt_ij, mfpt_ji = PyGT.mfpt.compute_MFPT(
                     starting_index, bulk_milestone, B, tau)
@@ -93,8 +94,8 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     
     # Each trajectory represents a set of frames between force changes
     # Align the trajectories and convert to 1D, and xi values
-    one_dim_trajs = parser.condense_trajectories(trajectories, onlyZ=toy_mode)
-    
+    one_dim_trajs = parser.condense_trajectories(trajectory_list, onlyZ=toy_mode)
+        
     #Construct a milestoning model based on trajectory fragments
     milestones, min_location, max_location, starting_cv_val, starting_index, h \
         = milestoning.uniform_milestone_locations(one_dim_trajs, num_milestones,
@@ -127,9 +128,15 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     diffusion_profiles = np.zeros((num_xi_bins, num_milestones))
     counts_profiles = np.zeros((num_xi_bins, num_milestones))
     
+    rate_matrix_sum = np.zeros((num_milestones, num_milestones))
+    transition_matrix_sum = np.zeros((num_milestones, num_milestones))
+    avg_time_vector_sum = np.zeros(num_milestones)
+    counts_sum = np.zeros(num_milestones)
     for i in range(num_xi_bins):
         if verbose:
             print(f"num trajectories in bin {i}: {len(xi_bins[i])}")
+        assert len(xi_bins[i]) > 0, "All angle bins need trajectories. "\
+            "Either run more simulations or decrease the number of angle bins."
         xi = xi_values[i]
         xi_bin_trajs = xi_bins[i]
         count_matrix, time_vector, time_vector_up, time_vector_down, \
@@ -147,17 +154,69 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
         slanting_force = xi * forceRAMD_in_nm_unitless
         unslanted_energy_profile = remove_slant.remove_slant(
             milestones, energy_profile, slanting_force)
-        unslanted_energy_profiles[i, :] = unslanted_energy_profile
-        diffusion_profiles[i, :] = diffusion_profile
-        counts_profiles[i, :] = counts
+        
+        # Unslanting transition matrices way
+       # unslanted_rate_matrix, unslanted_transition_matrix, \
+       #     unslanted_time_vector \
+       #      = remove_slant.unslant_transition_matrix_constant_approx(
+       #          milestones, transition_matrix, avg_time_vector, slanting_force,
+       #          beta)
+        
+        # milestoning statistics from profiles way
+        unslanted_rate_matrix, unslanted_transition_matrix, \
+            unslanted_time_vector \
+            = remove_slant.milestoning_statistics_from_profiles(
+                milestones, unslanted_energy_profile, diffusion_profile, beta)
+        
+        for j in range(num_milestones):
+            # NOTE: is this really the best way? Should we average the
+            #  probabilities and avg_times separately, then make a rate
+            #  matrix? I don't think so.
+            rate_matrix_sum[:, j] += counts[j] * unslanted_rate_matrix[:, j]
+            transition_matrix_sum[:, j] += counts[j] * unslanted_transition_matrix[:, j]
+            avg_time_vector_sum[j] += counts[j] * unslanted_time_vector[j]
+            counts_sum[j] += counts[j]
+        
+        #unslanted_energy_profiles[i, :] = unslanted_energy_profile
+        #diffusion_profiles[i, :] = diffusion_profile
+        #counts_profiles[i, :] = counts
     
-    energy_profile_avg, diffusion_profile_avg \
-        = remove_slant.average_unslanted_profiles(
-        num_xi_bins, num_milestones, unitless_beta, unslanted_energy_profiles,
-        diffusion_profiles, counts_profiles)
-    time_estimate = compute_time(
-        milestones, energy_profile_avg, diffusion_profile_avg, beta, 
-        starting_index, bulk_milestone)
+    rate_matrix_avg = np.zeros((num_milestones, num_milestones))
+    transition_matrix_avg = np.zeros((num_milestones, num_milestones))
+    avg_time_vector_avg = np.zeros((num_milestones, 1))
+    for j in range(num_milestones):
+        if counts_sum[j] == 0:
+            rate_matrix_avg[j-1, j] = rate_matrix_avg[j, j-1]
+            rate_matrix_avg[j, j] = -rate_matrix_avg[j, j-1]
+        else:
+            rate_matrix_avg[:, j] = rate_matrix_sum[:, j] / counts_sum[j]
+            transition_matrix_avg[:, j] = transition_matrix_sum[:, j] / counts_sum[j]
+            avg_time_vector_avg[j, 0] = avg_time_vector_sum[j] / counts_sum[j]
+    
+    averaged_stationary_probs = milestoning.compute_stationary_probabilities(
+        transition_matrix_avg, avg_time_vector_avg, num_milestones)
+    
+    averaged_energy_profile = remove_slant.make_energy_profile(
+        averaged_stationary_probs, unitless_beta, starting_index)
+    
+    #energy_profile_avg, diffusion_profile_avg \
+    #    = remove_slant.average_unslanted_profiles(
+    #    num_xi_bins, num_milestones, unitless_beta, unslanted_energy_profiles,
+    #    diffusion_profiles, counts_profiles)
+    #time_estimate = compute_time(
+    #    milestones, energy_profile_avg, diffusion_profile_avg, beta, 
+    #    starting_index, bulk_milestone)
+    
+    # Recompute main diagonal
+    for j in range(num_milestones):
+        rate_matrix_avg[j, j] = 0.0
+        rate_matrix_avg[j, j] = -sum(rate_matrix_avg[:,j])
+        
+    time_estimate = compute_time(rate_matrix_avg, starting_index, bulk_milestone)
+    
+    plt.plot(milestones, averaged_energy_profile, "r", label="Recovered Potential energy $W(z) (kJ/mol)$")
+    plt.show()
+    
     return time_estimate
 
 # TODO: add Torque balancing in the RAMD.

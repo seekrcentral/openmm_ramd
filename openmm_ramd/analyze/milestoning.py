@@ -187,15 +187,18 @@ def compute_diffusion_coefficients(rate_matrix, num_milestones, milestone_spacin
 
         elif i == num_milestones - 1:
             last = num_milestones - 1
-            diffusion_coeffs[last] = 0.5 * milestone_spacing**2 \
-                * rate_matrix[last-1, last]
+            if rate_matrix[last-1, last] == 0.0:
+                diffusion_coeffs[last] = diffusion_coeffs[last-1]
+            else:
+                diffusion_coeffs[last] = 0.5 * milestone_spacing**2 \
+                    * rate_matrix[last-1, last]
             
         else:
             diffusion_coeffs[i] += 0.5 * milestone_spacing**2 \
                 * rate_matrix[i+1, i]
             diffusion_coeffs[i] += 0.5 * milestone_spacing**2 \
                 * rate_matrix[i-1, i]
-            
+                
     return diffusion_coeffs
 
 def compute_counts(count_matrix, num_milestones):
