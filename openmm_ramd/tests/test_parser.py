@@ -43,11 +43,14 @@ def test_parse_ramd_log_file(small_linear_logfile_persistent):
 def test_parse_ramd_log_file_large(large_linear_logfile_persistent):
     [trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations,
      temperature, maxDist] = large_linear_logfile_persistent
+    
+    for i in range(len(trajectories)):
+        print("i:", i, "len(trajectory):", len(trajectories[i]))
     assert forceOutFreq == 50
     assert forceRAMD == 0.1
     assert timeStep == 0.002
     assert num_simulations == 101
-    assert len(trajectories) == 242
+    assert len(trajectories) == 241
     return
 
 def test_condense_trajectories(small_linear_logfile_persistent):

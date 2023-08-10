@@ -41,6 +41,11 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
     first_milestone_location = starting_cv_val - num_points_before * h
     milestones = [] #[start_milestone_location]
     #for i in range(num_milestones-1):
+    
+    # DEBUG
+    #first_milestone_location = 0.0
+    #h = 1.0
+    
     for i in range(num_milestones):
         milestone = first_milestone_location + h*i
         milestones.append(milestone)
@@ -50,7 +55,9 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
         start_point_index, h
     
 def make_milestoning_model(
-        xi_bin_trajs, milestones, frame_time, num_milestones):
+        xi_bin_trajs, milestones, frame_time, num_milestones,
+        remove_unbalanced_frame_counts=True):
+    
     frame_time = float(frame_time)
     count_matrix = np.zeros((num_milestones, num_milestones), dtype=np.int32)
     time_vector = np.zeros((num_milestones, 1))
@@ -63,15 +70,22 @@ def make_milestoning_model(
     for i, traj in enumerate(xi_bin_trajs):
         src_milestone = None
         new_cell_id = None
-        #src_time = -frame_time
+        src_time = 0.0
         #src_time_above = 
         #src_time_below = 
+        
+        # Here, I need to skip the counts and times the first time any state
+        #  is visited within a trajectory.
+        first_times = np.zeros(num_milestones)
+        first_transition = -np.ones(num_milestones)
+        first_milestone = None
+        
         for j, frame in enumerate(traj):
             [cv_val, xi_val] = frame
             # Find what cell it's in
             old_cell_id = new_cell_id
             new_cell_id = num_milestones
-            #src_time += frame_time
+            src_time += frame_time
             for k, milestone in enumerate(milestones):
                 if cv_val < milestone:
                     new_cell_id = k
@@ -83,8 +97,14 @@ def make_milestoning_model(
                 if src_milestone != dest_milestone:
                     if src_milestone is not None:
                         assert src_milestone != dest_milestone
+                        if first_milestone is None:
+                            first_milestone = src_milestone
+                            
+                        if first_times[dest_milestone] == 0.0:
+                            first_times[dest_milestone] = src_time
+                            first_transition[dest_milestone] = src_milestone
+                            
                         count_matrix[dest_milestone, src_milestone] += 1
-                        #recorded_time = (src_time - frame_time)
                         #time_vector[src_milestone, 0] += recorded_time
                         #if dest_milestone > src_milestone:
                         #    time_vector_up[src_milestone, 0] += recorded_time
@@ -92,15 +112,59 @@ def make_milestoning_model(
                         #    time_vector_down[src_milestone, 0] += recorded_time
                         
                     src_milestone = dest_milestone
-                    #src_time = -frame_time
+                    src_time = 0.0
                     
-            if src_milestone is not None:
+            if src_milestone is not None and j < len(traj)-1:
                 time_vector[src_milestone, 0] += frame_time
                 if cv_val > milestones[src_milestone]:
                     time_vector_up[src_milestone, 0] += frame_time
                 else:
                     time_vector_down[src_milestone, 0] += frame_time
-    
+        
+        # If we are removing the unmatched counts/times, then do so
+        if remove_unbalanced_frame_counts:
+            last_milestone = dest_milestone
+            
+            if i == -1:
+                print("first_times")
+                print(first_times)
+                print("first_transition")
+                print(first_transition)
+                print("first_milestone:", first_milestone)
+                print("last_milestone:", last_milestone)
+                
+                print("count_matrix before:")
+                print(count_matrix)
+                print("time_vector before:")
+                print(time_vector)
+            
+            if first_milestone+1 < last_milestone:
+                for j in range(first_milestone+1, last_milestone+1):
+                    if first_transition[j] < 0:
+                        continue
+                    src = int(first_transition[j])
+                    count_matrix[j, src] -= 1
+                    first_time = first_times[j]
+                    time_vector[src, 0] -= first_time
+            
+            if last_milestone+1 < first_milestone:
+                for j in range(last_milestone, first_milestone):
+                    if first_transition[j] < 0:
+                        continue
+                    src = int(first_transition[j])
+                    count_matrix[j, src] -= 1
+                    first_time = first_times[j]
+                    time_vector[src, 0] -= first_time
+                
+                    # Uncomment someday to check backwards transitions
+            
+            if i == -1:
+                print("count_matrix after:")
+                print(count_matrix)
+                print("time_vector before:")
+                print(time_vector)
+                exit()
+            
     
     transition_matrix = np.zeros((num_milestones, num_milestones))
     for i in range(num_milestones): # column index
@@ -120,6 +184,10 @@ def make_milestoning_model(
             else:
                 transition_matrix[j,i] = count_matrix[j,i] / column_sum
                 
+    avg_time_vector[0, 0] *= 0.5 # times need to be cut in half for end states
+    avg_time_vector_up[0, 0] *= 0.5
+    avg_time_vector_down[0, 0] *= 0.5
+    
     rate_matrix = np.zeros((num_milestones, num_milestones))
     for i in range(num_milestones):
         for j in range(num_milestones):
@@ -128,6 +196,7 @@ def make_milestoning_model(
             else:
                 rate_matrix[i,j] = transition_matrix[i,j] / avg_time_vector[j,0]
     
+    for i in range(num_milestones):
         rate_matrix[i,i] = -np.sum(rate_matrix[:,i])
         
     return count_matrix, time_vector, time_vector_up, time_vector_down, \
@@ -135,7 +204,8 @@ def make_milestoning_model(
         avg_time_vector_down, rate_matrix
 
 def compute_stationary_probabilities(transition_matrix, avg_time_vector, 
-                                     num_milestones):
+                                     num_milestones, start_index, 
+                                     wrap_sink=True):
     TINY_PROB = 1e-6
     initial_prob_vector = np.zeros((1, num_milestones))
     initial_prob_vector[0,0] = 1.0
@@ -144,9 +214,13 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
     if transition_matrix_with_leak[-2, -1] < TINY_PROB:
         transition_matrix_with_leak[-2, -1] = 1.0
         avg_time_vector[-1, 0] = avg_time_vector[-2, 0]
-        
+    
     transition_matrix_with_leak[-1, -1] += TINY_PROB
     transition_matrix_with_leak[-2, -1] -= TINY_PROB
+    
+    if wrap_sink:
+        transition_matrix_with_leak[:, -1] = 0.0
+        transition_matrix_with_leak[start_index, -1] = 1.0
     
     transition_matrix_with_leak[0, 0] += TINY_PROB
     transition_matrix_with_leak[1, 0] -= TINY_PROB
@@ -164,7 +238,7 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
         if i == 0 or i == num_milestones - 1:
             # This is because at the ends, the reflective boundary conditions
             #  cause the flux to be undercounted by a factor of 2
-            flux_factor = 2.0
+            flux_factor = 1.0
         else:
             flux_factor = 1.0
             

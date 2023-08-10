@@ -23,6 +23,9 @@ kB_kcal_per_mol_per_kelvin = unit.MOLAR_GAS_CONSTANT_R.in_units_of(
     unit.kilocalories_per_mole / unit.kelvin)
 A_per_nm = 10.0
 
+MODE = 2
+TINY_RATE = 1e-5
+
 def make_xi_bins(num_xi_bins):
     xi_bins = []
     xi_values = []
@@ -44,6 +47,22 @@ def compute_time(rate_matrix, starting_index, bulk_milestone):
                     starting_index, bulk_milestone, B, tau)
     time_estimate = mfpt_ji
     return time_estimate
+
+def correct_milestoning_model_for_ramd(rate_matrix_avg, transition_matrix_avg,
+                                       avg_time_vector_avg):
+    end_rate = rate_matrix_avg[-3, -2]
+    rate_matrix_avg[-1, -2] = 0.5 * end_rate
+    rate_matrix_avg[-3, -2] = 0.5 * end_rate
+    rate_matrix_avg[-2, -2] = -end_rate
+    rate_matrix_avg[-2, -1] = end_rate
+    rate_matrix_avg[-1, -1] = -end_rate
+    
+    transition_matrix_avg[-1, -2] = 0.5
+    transition_matrix_avg[-3, -2] = 0.5
+    transition_matrix_avg[-2, -1] = 1.0
+    
+    avg_time_vector_avg[-1] = avg_time_vector_avg[-2]
+    return
 
 # TODO: remove all camel case
 # TODO: break some of this code down into smaller functions
@@ -103,6 +122,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     bulk_milestone = num_milestones - 1
     # TODO: hacky
     print("milestones:", milestones, "h:", h)
+    print("starting_index:", starting_index)
     xi_bins, xi_values, xi_bins_ranges = make_xi_bins(num_xi_bins)
         
     for i, trajectory in enumerate(one_dim_trajs):
@@ -123,6 +143,11 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     forceRAMD_in_nm = forceRAMD_in_nm_unitless * unit.kilocalories_per_mole
     forceRAMD_in_A = forceRAMD * unit.kilocalories_per_mole
     
+    # TODO: marked for removal
+    #xi_escape_counts, xi_escape_blocks, xi_escape_block_rates \
+    #    = parser.make_xi_escape_rates(xi_bins, maxDist)
+    #xi_escape_times = xi_escape_blocks * frame_time
+    #xi_escape_rates = xi_escape_block_rates * (1.0 / frame_time)
     
     unslanted_energy_profiles = np.zeros((num_xi_bins, num_milestones))
     diffusion_profiles = np.zeros((num_xi_bins, num_milestones))
@@ -130,7 +155,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     
     rate_matrix_sum = np.zeros((num_milestones, num_milestones))
     transition_matrix_sum = np.zeros((num_milestones, num_milestones))
-    avg_time_vector_sum = np.zeros(num_milestones)
+    avg_time_vector_sum = np.zeros((num_milestones, 1))
     counts_sum = np.zeros(num_milestones)
     for i in range(num_xi_bins):
         if verbose:
@@ -143,30 +168,34 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
             transition_matrix, avg_time_vector, avg_time_vector_up, \
             avg_time_vector_down, rate_matrix \
             = milestoning.make_milestoning_model(
-                xi_bin_trajs, milestones, frame_time, num_milestones)
-        
-        energy_profile, diffusion_profile, counts \
-            = remove_slant.recover_profiles(
-            transition_matrix, time_vector, rate_matrix, count_matrix, 
-            num_milestones, h, unitless_beta)
-        #plt.plot(milestones, energy_profile, label=f"{xi:.2f}")
-        #plt.plot(milestones, diffusion_profile, label=f"{xi:.2f}")
+                xi_bin_trajs, milestones, frame_time, num_milestones,
+                remove_unbalanced_frame_counts=False)
         slanting_force = xi * forceRAMD_in_nm_unitless
-        unslanted_energy_profile = remove_slant.remove_slant(
-            milestones, energy_profile, slanting_force)
         
-        # Unslanting transition matrices way
-       # unslanted_rate_matrix, unslanted_transition_matrix, \
-       #     unslanted_time_vector \
-       #      = remove_slant.unslant_transition_matrix_constant_approx(
-       #          milestones, transition_matrix, avg_time_vector, slanting_force,
-       #          beta)
+        if MODE == 1:
+            energy_profile, diffusion_profile, counts \
+                = remove_slant.recover_profiles(
+                transition_matrix, time_vector, rate_matrix, count_matrix, 
+                num_milestones, h, unitless_beta)
+            unslanted_energy_profile = remove_slant.remove_slant(
+                milestones, energy_profile, slanting_force)
+            # milestoning statistics from profiles way
+            unslanted_rate_matrix, unslanted_transition_matrix, \
+                unslanted_time_vector \
+                = remove_slant.milestoning_statistics_from_profiles(
+                    milestones, unslanted_energy_profile, diffusion_profile, beta)
+        elif MODE == 2:
+            # Unslanting transition matrices way
+            unslanted_rate_matrix, unslanted_transition_matrix, \
+                unslanted_time_vector \
+                    = remove_slant.unslant_transition_matrix_constant_approx(
+                    milestones, transition_matrix, avg_time_vector, slanting_force,
+                    beta)
+            counts = milestoning.compute_counts(count_matrix, num_milestones)
+            
+        else:
+            raise Exception(f"Mode not available: {MODE}")
         
-        # milestoning statistics from profiles way
-        unslanted_rate_matrix, unslanted_transition_matrix, \
-            unslanted_time_vector \
-            = remove_slant.milestoning_statistics_from_profiles(
-                milestones, unslanted_energy_profile, diffusion_profile, beta)
         
         for j in range(num_milestones):
             # NOTE: is this really the best way? Should we average the
@@ -174,12 +203,15 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
             #  matrix? I don't think so.
             rate_matrix_sum[:, j] += counts[j] * unslanted_rate_matrix[:, j]
             transition_matrix_sum[:, j] += counts[j] * unslanted_transition_matrix[:, j]
-            avg_time_vector_sum[j] += counts[j] * unslanted_time_vector[j]
+            avg_time_vector_sum[j, 0] += counts[j] * unslanted_time_vector[j, 0]
             counts_sum[j] += counts[j]
         
         #unslanted_energy_profiles[i, :] = unslanted_energy_profile
         #diffusion_profiles[i, :] = diffusion_profile
         #counts_profiles[i, :] = counts
+        #print("unslanted_transition_matrix")
+        #print(unslanted_transition_matrix)
+        #exit()
     
     rate_matrix_avg = np.zeros((num_milestones, num_milestones))
     transition_matrix_avg = np.zeros((num_milestones, num_milestones))
@@ -191,13 +223,29 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
         else:
             rate_matrix_avg[:, j] = rate_matrix_sum[:, j] / counts_sum[j]
             transition_matrix_avg[:, j] = transition_matrix_sum[:, j] / counts_sum[j]
-            avg_time_vector_avg[j, 0] = avg_time_vector_sum[j] / counts_sum[j]
+        avg_time_vector_avg[j, 0] = avg_time_vector_sum[j, 0] / counts_sum[j]
+    
+    correct_milestoning_model_for_ramd(
+        rate_matrix_avg, transition_matrix_avg, avg_time_vector_avg)
+    
+    print("transition_matrix_avg")
+    print(transition_matrix_avg)
     
     averaged_stationary_probs = milestoning.compute_stationary_probabilities(
-        transition_matrix_avg, avg_time_vector_avg, num_milestones)
+        transition_matrix_avg, avg_time_vector_avg, num_milestones, 
+        starting_index, wrap_sink=False)
     
     averaged_energy_profile = remove_slant.make_energy_profile(
         averaged_stationary_probs, unitless_beta, starting_index)
+    
+    print("rate_matrix_avg")
+    print(rate_matrix_avg)
+    np.savetxt("/home/lvotapka/tmp/rate_matrix.txt", rate_matrix_avg)
+    
+    print("avg_time_vector_avg")
+    print(avg_time_vector_avg)
+    expected_time = h**2 / 2.0
+    print("expected time per milestone:", h**2/2.0)
     
     #energy_profile_avg, diffusion_profile_avg \
     #    = remove_slant.average_unslanted_profiles(
@@ -213,8 +261,9 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
         rate_matrix_avg[j, j] = -sum(rate_matrix_avg[:,j])
         
     time_estimate = compute_time(rate_matrix_avg, starting_index, bulk_milestone)
-    
     plt.plot(milestones, averaged_energy_profile, "r", label="Recovered Potential energy $W(z) (kJ/mol)$")
+    #plt.plot(milestones, avg_time_vector_avg, "b", label="Time vector")
+    plt.ylim((-15.0, 10.0))
     plt.show()
     
     return time_estimate

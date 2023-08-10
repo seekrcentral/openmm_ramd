@@ -165,21 +165,18 @@ def parse_ramd_log_file(ramd_log_filename):
             #change_accel_search = re.search("CHANGE", line)
             if change_accel_search:
                 accel_step = int(change_accel_search.group(1))
-                #accel_COM_x = float(change_accel_search.group(2))
-                #accel_COM_y = float(change_accel_search.group(3))
-                #accel_COM_z = float(change_accel_search.group(4))
+                accel_COM_x = float(change_accel_search.group(2))
+                accel_COM_y = float(change_accel_search.group(3))
+                accel_COM_z = float(change_accel_search.group(4))
                 old_ligand_step = ligand_step
-                new_trajectory_frame = True
+                if n_frames > 1:
+                    new_trajectory_frame = True
                 new_trajectory = True
             
             if new_trajectory_frame:
-                print("n_frames:", n_frames, "relative_COM_x:", relative_COM_x,
-                      "relative_COM_y:", relative_COM_y, "relative_COM_z:", 
-                      relative_COM_z, "old_ligand_COM_x:", old_ligand_COM_x,
-                      "old_ligand_COM_y:", old_ligand_COM_y, "old_ligand_COM_z",
-                      old_ligand_COM_z)
-                assert old_ligand_COM_x is not None, \
-                    f"Error near file: {ramd_log_filename}, line: {i}"
+                if n_frames > 0:
+                    assert old_ligand_COM_x is not None, \
+                        f"Error near file: {ramd_log_filename}, line: {i}"
                 n_frames = add_new_frame(
                     trajectory, n_frames, relative_COM_x, relative_COM_y, 
                     relative_COM_z, old_ligand_COM_x, old_ligand_COM_y, 
@@ -194,6 +191,13 @@ def parse_ramd_log_file(ramd_log_filename):
                 
         if n_frames > 0:
             accel_step = old_ligand_step
+            #print("n_frames:", n_frames, "relative_COM_x:", relative_COM_x,
+            #      "relative_COM_y:", relative_COM_y, "relative_COM_z:", 
+            #      relative_COM_z, "old_ligand_COM_x:", old_ligand_COM_x,
+            #      "old_ligand_COM_y:", old_ligand_COM_y, "old_ligand_COM_z",
+            #      old_ligand_COM_z)
+            assert old_ligand_COM_x is not None, \
+                f"Error near file: {ramd_log_filename}, line: {i}"
             n_frames = add_new_frame(
                     trajectory, n_frames, relative_COM_x, relative_COM_y, 
                     relative_COM_z, ligand_COM_x, ligand_COM_y, 
@@ -264,3 +268,25 @@ def condense_trajectories(trajectories, onlyZ=False):
         one_dim_trajs.append(one_dim_traj)
         
     return one_dim_trajs
+
+""" # TODO: marked for removal
+def make_xi_escape_rates(xi_bins, maxDist):
+    xi_escape_counts = np.zeros(len(xi_bins))
+    xi_escape_blocks = np.zeros(len(xi_bins))
+    xi_escape_block_rates = np.zeros(len(xi_bins))
+    
+    for i, xi_bin_trajs in enumerate(xi_bins):
+        for j, traj in enumerate(xi_bin_trajs):
+            lastframe = traj[-1]
+            cv_value = lastframe[0]
+            if cv_value >= maxDist:
+                # Escape event
+                xi_escape_counts[i] += 1
+                
+            traj_time = len(traj)
+            xi_escape_blocks[i] += traj_time
+    
+    for i, xi_bin_trajs in enumerate(xi_bins):
+        xi_escape_block_rates[i] = xi_escape_counts[i] / xi_escape_blocks[i]
+    return xi_escape_counts, xi_escape_blocks, xi_escape_block_rates
+"""

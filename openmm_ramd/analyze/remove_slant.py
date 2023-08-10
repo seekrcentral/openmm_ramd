@@ -189,7 +189,7 @@ def milestoning_statistics_from_profiles(
     num_milestones = len(milestones)
     rate_matrix = np.zeros((num_milestones, num_milestones))
     transition_matrix = np.zeros((num_milestones, num_milestones))
-    avg_time_vector = np.zeros(num_milestones)
+    avg_time_vector = np.zeros((num_milestones, 1))
     for i, milestone in enumerate(milestones):
         if i == 0:
             doing_a = False
@@ -262,7 +262,7 @@ def milestoning_statistics_from_profiles(
             transition_matrix[i+1, i] = P_b_to_c
         
         rate_matrix[i, i] = -1.0 / time
-        avg_time_vector[i] = time
+        avg_time_vector[i, 0] = time
         
     return rate_matrix, transition_matrix, avg_time_vector
 
@@ -322,25 +322,33 @@ def unslant_transition_matrix_constant_approx(
     # immediately adjacent milestones - creating errors, but is unavoidable.
     
     for i in range(1, num_milestones-1): # columns
-        assert milestones[i+1] - milestones[i] \
-            == milestones[i] - milestones[i-1], "This method only works for "\
+        assert np.isclose(milestones[i+1] - milestones[i],
+            milestones[i] - milestones[i-1]), "This method only works for "\
             "equally-spaced milestones - to leave avg. time unmodified."
         span = milestones[i+1] - milestones[i-1]
         
-        p_a = transition_matrix[:i,i]
-        f_a = (1.0/p_a) - 1.0
-        factor_a = np.exp(0.5 * beta * slanting_force * span)
-        new_f_a = f_a * factor_a
-        new_p_a = 1.0 / (1.0 + new_f_a)
+        p_a = np.sum(transition_matrix[:i,i])
+        if p_a == 0.0:
+            new_p_a = 0.0
+            
+        else:
+            f_a = (1.0/p_a) - 1.0
+            factor_a = np.exp(0.5 * beta * slanting_force * span)
+            new_f_a = f_a * factor_a
+            new_p_a = 1.0 / (1.0 + new_f_a)
         
-        p_c = transition_matrix[i+1:,i]
-        f_c = (1.0/p_c) - 1.0
-        factor_c = np.exp(0.5 * beta * slanting_force * -span)
-        new_f_c = f_c * factor_c
-        new_p_c = 1.0 / (1.0 + new_f_c)
+        p_c = np.sum(transition_matrix[i+1:,i])
+        if p_c == 0.0:
+            new_p_c = 0.0
+            
+        else:
+            f_c = (1.0/p_c) - 1.0
+            factor_c = np.exp(0.5 * beta * slanting_force * -span)
+            new_f_c = f_c * factor_c
+            new_p_c = 1.0 / (1.0 + new_f_c)
         
         unslanted_transition_matrix[i-1,i] = new_p_a / (new_p_a + new_p_c)
-        unslanted_transition_matrix[i-1,i] = new_p_c / (new_p_a + new_p_c)
+        unslanted_transition_matrix[i+1,i] = new_p_c / (new_p_a + new_p_c)
         
         unslanted_time_vector[i, 0] = avg_time_vector[i, 0]
     
@@ -352,6 +360,7 @@ def unslant_transition_matrix_constant_approx(
                 unslanted_rate_matrix[i,j] = unslanted_transition_matrix[i,j] \
                     / unslanted_time_vector[j,0]
     
+    for i in range(num_milestones):
         unslanted_rate_matrix[i,i] = -np.sum(unslanted_rate_matrix[:,i]) 
     
     return unslanted_rate_matrix, unslanted_transition_matrix, \

@@ -38,6 +38,8 @@ start_milestone_index = num_milestones // 10
 WELL_DEPTH = 7.0
 force_magnitude = 5.0
 
+MODE = 2
+
 def potential_energy_flat(z, force_constant, start=0.0, u=None):
     """
     Returns a flat potential energy profile, but a slant may be optionally added
@@ -337,7 +339,7 @@ if __name__ == "__main__":
     
     rate_matrix_sum = np.zeros((num_milestones, num_milestones))
     transition_matrix_sum = np.zeros((num_milestones, num_milestones))
-    avg_time_vector_sum = np.zeros(num_milestones)
+    avg_time_vector_sum = np.zeros((num_milestones, 1))
     counts_sum = np.zeros(num_milestones)
     
     for i in range(num_xi_bins):
@@ -352,25 +354,34 @@ if __name__ == "__main__":
             = milestoning_statistics_from_profiles(
             milestones, z_s, potential_energy_slant, diffusion_coefficient_slant, beta)
         
-        energy_profile, diffusion_profile, counts \
-                = remove_slant.recover_profiles(
-                transition_matrix, avg_time_vector, rate_matrix, count_matrix, 
-                num_milestones, milestone_h, beta, 
+        if MODE == 1:
+            energy_profile, diffusion_profile, counts \
+                    = remove_slant.recover_profiles(
+                    transition_matrix, avg_time_vector, rate_matrix, count_matrix, 
+                    num_milestones, milestone_h, beta, 
+                    ref_milestone_index=start_milestone_index)
+            
+            unslanted_energy_profile = remove_slant.remove_slant(
+                milestones, energy_profile, -slanting_force, 
                 ref_milestone_index=start_milestone_index)
+            
+            unslanted_rate_matrix, unslanted_transition_matrix, \
+                unslanted_time_vector \
+                = remove_slant.milestoning_statistics_from_profiles(
+                    milestones, unslanted_energy_profile, diffusion_profile, beta)
         
-        unslanted_energy_profile = remove_slant.remove_slant(
-            milestones, energy_profile, -slanting_force, 
-            ref_milestone_index=start_milestone_index)
-        
-        unslanted_rate_matrix, unslanted_transition_matrix, \
-            unslanted_time_vector \
-            = remove_slant.milestoning_statistics_from_profiles(
-                milestones, unslanted_energy_profile, diffusion_profile, beta)
+        elif MODE == 2:
+            unslanted_rate_matrix, unslanted_transition_matrix, \
+                unslanted_time_vector \
+                    = remove_slant.unslant_transition_matrix_constant_approx(
+                    milestones, transition_matrix, avg_time_vector, slanting_force,
+                    beta)
+            counts = milestoning.compute_counts(count_matrix, num_milestones)
         
         for j in range(num_milestones):
             rate_matrix_sum[:, j] += counts[j] * unslanted_rate_matrix[:, j]
             transition_matrix_sum[:, j] += counts[j] * unslanted_transition_matrix[:, j]
-            avg_time_vector_sum[j] += counts[j] * unslanted_time_vector[j]
+            avg_time_vector_sum[j, 0] += counts[j] * unslanted_time_vector[j, 0]
             counts_sum[j] += counts[j]
         
         #unslanted_energy_profiles[i, :] = unslanted_energy_profile
@@ -378,7 +389,7 @@ if __name__ == "__main__":
         #counts_profiles[i, :] = counts
         
         recovered_stationary_probs = milestoning.compute_stationary_probabilities(
-            unslanted_transition_matrix, avg_time_vector, num_milestones)
+            unslanted_transition_matrix, unslanted_time_vector, num_milestones)
         
         recovered_energy_profile = remove_slant.make_energy_profile(
             recovered_stationary_probs, beta, start_milestone_index)
@@ -406,7 +417,7 @@ if __name__ == "__main__":
     for j in range(num_milestones):
         rate_matrix_avg[:, j] = rate_matrix_sum[:, j] / counts_sum[j]
         transition_matrix_avg[:, j] = transition_matrix_sum[:, j] / counts_sum[j]
-        avg_time_vector_avg[j, 0] = avg_time_vector_sum[j] / counts_sum[j]
+        avg_time_vector_avg[j, 0] = avg_time_vector_sum[j, 0] / counts_sum[j]
     
     averaged_stationary_probs = milestoning.compute_stationary_probabilities(
         transition_matrix_avg, avg_time_vector_avg, num_milestones)
