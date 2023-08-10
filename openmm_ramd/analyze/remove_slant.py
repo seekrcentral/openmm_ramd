@@ -308,15 +308,15 @@ def unslant_transition_matrix_constant_approx(
     num_milestones = len(milestones)
     unslanted_rate_matrix = np.zeros((num_milestones, num_milestones))
     unslanted_transition_matrix = np.zeros((num_milestones, num_milestones))
-    unslanted_time_vector = np.zeros((num_milestones, 1))
+    unslanted_avg_time_vector = np.zeros((num_milestones, 1))
     
     # i == 0
     unslanted_transition_matrix[:,0] = transition_matrix[:,0]
-    unslanted_time_vector[0,0] = avg_time_vector[0,0]
+    unslanted_avg_time_vector[0,0] = avg_time_vector[0,0]
     
     # i == num_milestones - 1
     unslanted_transition_matrix[:,-1] = transition_matrix[:,-1]
-    unslanted_time_vector[-1,0] = avg_time_vector[-1,0]
+    unslanted_avg_time_vector[-1,0] = avg_time_vector[-1,0]
     
     # NOTE: this theory will neglect the effects of transitions beyond the
     # immediately adjacent milestones - creating errors, but is unavoidable.
@@ -350,18 +350,18 @@ def unslant_transition_matrix_constant_approx(
         unslanted_transition_matrix[i-1,i] = new_p_a / (new_p_a + new_p_c)
         unslanted_transition_matrix[i+1,i] = new_p_c / (new_p_a + new_p_c)
         
-        unslanted_time_vector[i, 0] = avg_time_vector[i, 0]
+        unslanted_avg_time_vector[i, 0] = avg_time_vector[i, 0]
     
     for i in range(num_milestones):
         for j in range(num_milestones):
-            if unslanted_time_vector[j,0] == 0.0:
+            if unslanted_avg_time_vector[j,0] == 0.0:
                 unslanted_rate_matrix[i,j] = 0.0
             else:
                 unslanted_rate_matrix[i,j] = unslanted_transition_matrix[i,j] \
-                    / unslanted_time_vector[j,0]
+                    / unslanted_avg_time_vector[j,0]
     
     for i in range(num_milestones):
         unslanted_rate_matrix[i,i] = -np.sum(unslanted_rate_matrix[:,i]) 
     
     return unslanted_rate_matrix, unslanted_transition_matrix, \
-            unslanted_time_vector
+            unslanted_avg_time_vector

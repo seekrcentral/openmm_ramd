@@ -13,61 +13,19 @@ import argparse
 import numpy as np
 from openmm import unit
 import matplotlib.pyplot as plt
-import PyGT
 
 import openmm_ramd.analyze.parser as parser
+import openmm_ramd.analyze.samples as samples
 import openmm_ramd.analyze.milestoning as milestoning
 import openmm_ramd.analyze.remove_slant as remove_slant
 
-kB_kcal_per_mol_per_kelvin = unit.MOLAR_GAS_CONSTANT_R.in_units_of(
-    unit.kilocalories_per_mole / unit.kelvin)
-A_per_nm = 10.0
 
-MODE = 2
-TINY_RATE = 1e-5
-
-def make_xi_bins(num_xi_bins):
-    xi_bins = []
-    xi_values = []
-    xi_bins_ranges = np.linspace(-1.0, 1.0, num_xi_bins+1)
-    for j in range(num_xi_bins):
-        xi_bins.append([])
-        xi_value = 0.5 * (xi_bins_ranges[j] + xi_bins_ranges[j+1])
-        xi_values.append(xi_value)
-        
-    return xi_bins, xi_values, xi_bins_ranges
-
-#def compute_time(milestones, energy_profile_avg, diffusion_profile_avg, 
-#                 beta, starting_index, bulk_milestone):
-def compute_time(rate_matrix, starting_index, bulk_milestone):
-    #rate_matrix = remove_slant.milestoning_statistics_from_profiles(
-    #    milestones, energy_profile_avg, diffusion_profile_avg, beta)
-    B, tau = PyGT.tools.load_CTMC(rate_matrix)
-    mfpt_ij, mfpt_ji = PyGT.mfpt.compute_MFPT(
-                    starting_index, bulk_milestone, B, tau)
-    time_estimate = mfpt_ji
-    return time_estimate
-
-def correct_milestoning_model_for_ramd(rate_matrix_avg, transition_matrix_avg,
-                                       avg_time_vector_avg):
-    end_rate = rate_matrix_avg[-3, -2]
-    rate_matrix_avg[-1, -2] = 0.5 * end_rate
-    rate_matrix_avg[-3, -2] = 0.5 * end_rate
-    rate_matrix_avg[-2, -2] = -end_rate
-    rate_matrix_avg[-2, -1] = end_rate
-    rate_matrix_avg[-1, -1] = -end_rate
-    
-    transition_matrix_avg[-1, -2] = 0.5
-    transition_matrix_avg[-3, -2] = 0.5
-    transition_matrix_avg[-2, -1] = 1.0
-    
-    avg_time_vector_avg[-1] = avg_time_vector_avg[-2]
-    return
 
 # TODO: remove all camel case
 # TODO: break some of this code down into smaller functions
 def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5, 
-                verbose=True, toy_mode=False):
+                verbose=True, toy_mode=False, num_error_samples=0, 
+                stride_error_samples=None, skip_error_samples=None):
     if verbose:
         print(f"Using {num_milestones} milestones.")
         print(f"Using {num_xi_bins} angle bins.")
@@ -97,7 +55,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
             
         trajectory_list += trajectories
     
-    beta = 1.0 / (temperature * unit.kelvin * kB_kcal_per_mol_per_kelvin)
+    beta = 1.0 / (temperature * unit.kelvin * samples.kB_kcal_per_mol_per_kelvin)
     unitless_beta = beta.value_in_unit(unit.mole / unit.kilocalorie)
     
     if verbose:
@@ -120,18 +78,20 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
         = milestoning.uniform_milestone_locations(one_dim_trajs, num_milestones,
                                                   maxDist)
     bulk_milestone = num_milestones - 1
-    # TODO: hacky
-    print("milestones:", milestones, "h:", h)
-    print("starting_index:", starting_index)
-    xi_bins, xi_values, xi_bins_ranges = make_xi_bins(num_xi_bins)
+    if verbose:
+        print("milestones:", milestones, "h:", h)
+        print("starting_index:", starting_index)
+        
+    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones)
+    print("xi_bins:", xi_bins)
         
     for i, trajectory in enumerate(one_dim_trajs):
         traj_xi = trajectory[0][1]
         found_bin = False
-        for j in range(num_xi_bins):
-            if (traj_xi >= xi_bins_ranges[j]) \
-                    and (traj_xi <= xi_bins_ranges[j+1]):
-                xi_bins[j].append(trajectory)
+        for j, xi_bin in enumerate(xi_bins):
+            if (traj_xi >= xi_bin.lowest_boundary) \
+                    and (traj_xi <= xi_bin.highest_boundary):
+                xi_bin.trajs.append(trajectory)
                 found_bin = True
                 break
         
@@ -139,134 +99,47 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
             raise Exception(f"xi value {traj_xi} not placed in bin.")
     
     frame_time = timeStep * forceOutFreq
-    forceRAMD_in_nm_unitless = forceRAMD * A_per_nm
+    forceRAMD_in_nm_unitless = forceRAMD * samples.A_per_nm
     forceRAMD_in_nm = forceRAMD_in_nm_unitless * unit.kilocalories_per_mole
     forceRAMD_in_A = forceRAMD * unit.kilocalories_per_mole
     
-    # TODO: marked for removal
-    #xi_escape_counts, xi_escape_blocks, xi_escape_block_rates \
-    #    = parser.make_xi_escape_rates(xi_bins, maxDist)
-    #xi_escape_times = xi_escape_blocks * frame_time
-    #xi_escape_rates = xi_escape_block_rates * (1.0 / frame_time)
-    
-    unslanted_energy_profiles = np.zeros((num_xi_bins, num_milestones))
-    diffusion_profiles = np.zeros((num_xi_bins, num_milestones))
-    counts_profiles = np.zeros((num_xi_bins, num_milestones))
-    
-    rate_matrix_sum = np.zeros((num_milestones, num_milestones))
-    transition_matrix_sum = np.zeros((num_milestones, num_milestones))
-    avg_time_vector_sum = np.zeros((num_milestones, 1))
-    counts_sum = np.zeros(num_milestones)
-    for i in range(num_xi_bins):
+    for i, xi_bin in enumerate(xi_bins):
         if verbose:
-            print(f"num trajectories in bin {i}: {len(xi_bins[i])}")
-        assert len(xi_bins[i]) > 0, "All angle bins need trajectories. "\
+            print(f"num trajectories in bin {i}: {len(xi_bin.trajs)}")
+        assert len(xi_bin.trajs) > 0, "All angle bins need trajectories. "\
             "Either run more simulations or decrease the number of angle bins."
-        xi = xi_values[i]
-        xi_bin_trajs = xi_bins[i]
         count_matrix, time_vector, time_vector_up, time_vector_down, \
-            transition_matrix, avg_time_vector, avg_time_vector_up, \
-            avg_time_vector_down, rate_matrix \
+            avg_time_vector, avg_time_vector_up, avg_time_vector_down \
             = milestoning.make_milestoning_model(
-                xi_bin_trajs, milestones, frame_time, num_milestones,
+                xi_bin.trajs, milestones, frame_time, num_milestones,
                 remove_unbalanced_frame_counts=False)
-        slanting_force = xi * forceRAMD_in_nm_unitless
         
-        if MODE == 1:
-            energy_profile, diffusion_profile, counts \
-                = remove_slant.recover_profiles(
-                transition_matrix, time_vector, rate_matrix, count_matrix, 
-                num_milestones, h, unitless_beta)
-            unslanted_energy_profile = remove_slant.remove_slant(
-                milestones, energy_profile, slanting_force)
-            # milestoning statistics from profiles way
-            unslanted_rate_matrix, unslanted_transition_matrix, \
-                unslanted_time_vector \
-                = remove_slant.milestoning_statistics_from_profiles(
-                    milestones, unslanted_energy_profile, diffusion_profile, beta)
-        elif MODE == 2:
-            # Unslanting transition matrices way
-            unslanted_rate_matrix, unslanted_transition_matrix, \
-                unslanted_time_vector \
-                    = remove_slant.unslant_transition_matrix_constant_approx(
-                    milestones, transition_matrix, avg_time_vector, slanting_force,
-                    beta)
-            counts = milestoning.compute_counts(count_matrix, num_milestones)
-            
-        else:
-            raise Exception(f"Mode not available: {MODE}")
+        xi_bin.assign_main_data_sample(
+            count_matrix, time_vector, avg_time_vector)
         
+        if num_error_samples > 0:
+            xi_bin.sample_error_matrices(
+                num_error_samples, stride_error_samples, skip_error_samples)
         
-        for j in range(num_milestones):
-            # NOTE: is this really the best way? Should we average the
-            #  probabilities and avg_times separately, then make a rate
-            #  matrix? I don't think so.
-            rate_matrix_sum[:, j] += counts[j] * unslanted_rate_matrix[:, j]
-            transition_matrix_sum[:, j] += counts[j] * unslanted_transition_matrix[:, j]
-            avg_time_vector_sum[j, 0] += counts[j] * unslanted_time_vector[j, 0]
-            counts_sum[j] += counts[j]
+        xi_bin.unslant_data_samples(forceRAMD_in_nm_unitless, beta)
+        xi_bin.counts = milestoning.compute_counts(count_matrix, num_milestones)
         
-        #unslanted_energy_profiles[i, :] = unslanted_energy_profile
-        #diffusion_profiles[i, :] = diffusion_profile
-        #counts_profiles[i, :] = counts
-        #print("unslanted_transition_matrix")
-        #print(unslanted_transition_matrix)
-        #exit()
+    analysis = samples.Analysis(num_milestones, milestones, h)
+    analysis.avg_unslanted_xi_bins(xi_bins)
     
-    rate_matrix_avg = np.zeros((num_milestones, num_milestones))
-    transition_matrix_avg = np.zeros((num_milestones, num_milestones))
-    avg_time_vector_avg = np.zeros((num_milestones, 1))
-    for j in range(num_milestones):
-        if counts_sum[j] == 0:
-            rate_matrix_avg[j-1, j] = rate_matrix_avg[j, j-1]
-            rate_matrix_avg[j, j] = -rate_matrix_avg[j, j-1]
-        else:
-            rate_matrix_avg[:, j] = rate_matrix_sum[:, j] / counts_sum[j]
-            transition_matrix_avg[:, j] = transition_matrix_sum[:, j] / counts_sum[j]
-        avg_time_vector_avg[j, 0] = avg_time_vector_sum[j, 0] / counts_sum[j]
+    # Next: make energy and diffusion profiles for analysis object
     
-    correct_milestoning_model_for_ramd(
-        rate_matrix_avg, transition_matrix_avg, avg_time_vector_avg)
+    analysis.make_profiles(starting_index, wrap_sink=False, 
+                           unitless_beta=unitless_beta)
     
-    print("transition_matrix_avg")
-    print(transition_matrix_avg)
+    analysis.make_times(starting_index, bulk_milestone)
     
-    averaged_stationary_probs = milestoning.compute_stationary_probabilities(
-        transition_matrix_avg, avg_time_vector_avg, num_milestones, 
-        starting_index, wrap_sink=False)
-    
-    averaged_energy_profile = remove_slant.make_energy_profile(
-        averaged_stationary_probs, unitless_beta, starting_index)
-    
-    print("rate_matrix_avg")
-    print(rate_matrix_avg)
-    np.savetxt("/home/lvotapka/tmp/rate_matrix.txt", rate_matrix_avg)
-    
-    print("avg_time_vector_avg")
-    print(avg_time_vector_avg)
-    expected_time = h**2 / 2.0
-    print("expected time per milestone:", h**2/2.0)
-    
-    #energy_profile_avg, diffusion_profile_avg \
-    #    = remove_slant.average_unslanted_profiles(
-    #    num_xi_bins, num_milestones, unitless_beta, unslanted_energy_profiles,
-    #    diffusion_profiles, counts_profiles)
-    #time_estimate = compute_time(
-    #    milestones, energy_profile_avg, diffusion_profile_avg, beta, 
-    #    starting_index, bulk_milestone)
-    
-    # Recompute main diagonal
-    for j in range(num_milestones):
-        rate_matrix_avg[j, j] = 0.0
-        rate_matrix_avg[j, j] = -sum(rate_matrix_avg[:,j])
-        
-    time_estimate = compute_time(rate_matrix_avg, starting_index, bulk_milestone)
-    plt.plot(milestones, averaged_energy_profile, "r", label="Recovered Potential energy $W(z) (kJ/mol)$")
+    #plt.plot(milestones, averaged_energy_profile, "r", label="Recovered Potential energy $W(z) (kJ/mol)$")
     #plt.plot(milestones, avg_time_vector_avg, "b", label="Time vector")
-    plt.ylim((-15.0, 10.0))
-    plt.show()
+    #plt.ylim((-15.0, 10.0))
+    #plt.show()
     
-    return time_estimate
+    return analysis
 
 # TODO: add Torque balancing in the RAMD.
 if __name__ == "__main__":
@@ -287,6 +160,22 @@ if __name__ == "__main__":
         "the Z-axis of the zeroth particle. In contrast, the CV of a non-"
         "toy system is found using a more complex procedure.", 
         action="store_true")
+    argparser.add_argument(
+        "-N", "--num_error_samples", dest="num_error_samples", 
+        default=100, type=int, help="Specify the number of error samples" \
+        " to generate for estimating error/uncertainty of computed "\
+        "values. Default: 100")
+    argparser.add_argument(
+        "-S", "--stride_error_samples", dest="stride_error_samples", 
+        default=None, type=int, help="Specify the number of strides between" \
+        "saved error samples. An argument of None automatically assigns the "\
+        "quantity at the number of milestones in the model squared. Default: "\
+        "None")
+    argparser.add_argument(
+        "-K", "--skip_error_samples", dest="skip_error_samples", 
+        default=None, type=int, help="Specify the number of error samples. "\
+        "An argument of None automatically assigns the quantity at ten times "\
+        "the number of milestones in the model squared. Default: None.")
     
     args = argparser.parse_args()
     args = vars(args)
@@ -294,7 +183,14 @@ if __name__ == "__main__":
     numMilestones = args["numMilestones"]
     numAngleBins = args["numAngleBins"]
     toyMode = args["toyMode"]
+    num_error_samples = args["num_error_samples"]
+    stride_error_samples = args["stride_error_samples"]
+    skip_error_samples = args["skip_error_samples"]
     
-    time_estimate = analyze_log(ramdLogFiles, numMilestones, numAngleBins,
-                                toy_mode=toyMode)
-    print("Estimated unbiased time:", time_estimate)
+    analysis = analyze_log(
+        ramdLogFiles, numMilestones, numAngleBins, toy_mode=toyMode, 
+        num_error_samples=num_error_samples, 
+        stride_error_samples=stride_error_samples, 
+        skip_error_samples=skip_error_samples)
+    
+    print("Estimated unbiased time:", analysis.MFPT)

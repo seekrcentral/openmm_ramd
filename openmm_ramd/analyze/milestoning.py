@@ -124,20 +124,6 @@ def make_milestoning_model(
         # If we are removing the unmatched counts/times, then do so
         if remove_unbalanced_frame_counts:
             last_milestone = dest_milestone
-            
-            if i == -1:
-                print("first_times")
-                print(first_times)
-                print("first_transition")
-                print(first_transition)
-                print("first_milestone:", first_milestone)
-                print("last_milestone:", last_milestone)
-                
-                print("count_matrix before:")
-                print(count_matrix)
-                print("time_vector before:")
-                print(time_vector)
-            
             if first_milestone+1 < last_milestone:
                 for j in range(first_milestone+1, last_milestone+1):
                     if first_transition[j] < 0:
@@ -155,18 +141,7 @@ def make_milestoning_model(
                     count_matrix[j, src] -= 1
                     first_time = first_times[j]
                     time_vector[src, 0] -= first_time
-                
-                    # Uncomment someday to check backwards transitions
-            
-            if i == -1:
-                print("count_matrix after:")
-                print(count_matrix)
-                print("time_vector before:")
-                print(time_vector)
-                exit()
-            
     
-    transition_matrix = np.zeros((num_milestones, num_milestones))
     for i in range(num_milestones): # column index
         column_sum = np.sum(count_matrix[:,i])
         if column_sum > 0.0:
@@ -177,17 +152,27 @@ def make_milestoning_model(
         column_sum_down = np.sum(count_matrix[:i,i])
         if column_sum_down > 0.0:
             avg_time_vector_down[i, 0] = time_vector_down[i, 0] / column_sum_down
-        
+                
+    avg_time_vector[0, 0] *= 0.5 # times need to be cut in half for end states
+    avg_time_vector_up[0, 0] *= 0.5
+    avg_time_vector_down[0, 0] *= 0.5
+    
+    return count_matrix, time_vector, time_vector_up, time_vector_down, \
+        avg_time_vector, avg_time_vector_up, avg_time_vector_down
+
+def make_transition_matrix(num_milestones, count_matrix):
+    transition_matrix = np.zeros((num_milestones, num_milestones))
+    for i in range(num_milestones): # column index
+        column_sum = np.sum(count_matrix[:,i])
         for j in range(num_milestones): # row index
             if column_sum == 0.0:
                 transition_matrix[j,i] = 0.0
             else:
                 transition_matrix[j,i] = count_matrix[j,i] / column_sum
                 
-    avg_time_vector[0, 0] *= 0.5 # times need to be cut in half for end states
-    avg_time_vector_up[0, 0] *= 0.5
-    avg_time_vector_down[0, 0] *= 0.5
-    
+    return transition_matrix
+
+def make_rate_matrix(num_milestones, transition_matrix, avg_time_vector):
     rate_matrix = np.zeros((num_milestones, num_milestones))
     for i in range(num_milestones):
         for j in range(num_milestones):
@@ -199,9 +184,7 @@ def make_milestoning_model(
     for i in range(num_milestones):
         rate_matrix[i,i] = -np.sum(rate_matrix[:,i])
         
-    return count_matrix, time_vector, time_vector_up, time_vector_down, \
-        transition_matrix, avg_time_vector, avg_time_vector_up, \
-        avg_time_vector_down, rate_matrix
+    return rate_matrix
 
 def compute_stationary_probabilities(transition_matrix, avg_time_vector, 
                                      num_milestones, start_index, 

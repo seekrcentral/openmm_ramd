@@ -1,0 +1,323 @@
+"""
+Base functions, classes, and constants for openmm_ramd analysis.
+"""
+
+import PyGT
+import numpy as np
+from openmm import unit
+
+
+import openmm_ramd.analyze.milestoning as milestoning
+import openmm_ramd.analyze.remove_slant as remove_slant
+import openmm_ramd.analyze.error_margins as error_margins
+
+kB_kcal_per_mol_per_kelvin = unit.MOLAR_GAS_CONSTANT_R.in_units_of(
+    unit.kilocalories_per_mole / unit.kelvin)
+A_per_nm = 10.0
+
+class Data_sample():
+    """
+    
+    """
+    def __init__(self):
+        self.N_ij = None
+        self.R_i = None
+        self.t = None
+        self.Q = None
+        self.K = None
+        self.K_hat = None
+        self.p_i = None
+        self.free_energy_profile = None
+        self.MFPT = None
+        self.k_off = None
+
+class Xi_bin():
+    """
+    
+    """
+    def __init__(self, num_milestones, milestones, lowest_boundary, midpoint, 
+                 highest_boundary):
+        self.num_milestones = num_milestones
+        self.milestones = milestones
+        self.lowest_boundary = lowest_boundary
+        self.midpoint = midpoint
+        self.highest_boundary = highest_boundary
+        self.trajs = []
+        self.main_data_sample = None
+        self.main_data_sample_unslanted = None
+        self.data_samples = []
+        self.data_samples_unslanted = []
+        self.counts = None
+        self.num_error_samples = 0
+        return
+    
+    def assign_main_data_sample(self, count_matrix, time_vector, 
+                                avg_time_vector):
+        self.main_data_sample = Data_sample()
+        self.main_data_sample.N_ij = count_matrix
+        self.main_data_sample.R_i = time_vector
+        self.main_data_sample.t = avg_time_vector
+        self.main_data_sample.K = milestoning.make_transition_matrix(
+            self.num_milestones, count_matrix)
+        self.main_data_sample.Q = milestoning.make_rate_matrix(
+            self.num_milestones, self.main_data_sample.K, avg_time_vector)
+        return
+    
+    def sample_error_matrices(self, num_error_samples, stride_error_samples, 
+                              skip_error_samples):
+        self.num_error_samples = num_error_samples
+        self.data_samples = error_margins.monte_carlo_milestoning_error(
+            self.main_data_sample, num_error_samples, skip_error_samples, 
+            stride_error_samples)
+        return
+        
+    def unslant_data_samples(self, forceRAMD_in_nm_unitless, beta):
+        slanting_force = self.midpoint * forceRAMD_in_nm_unitless
+        unslanted_rate_matrix, unslanted_transition_matrix, \
+            unslanted_avg_time_vector \
+                = remove_slant.unslant_transition_matrix_constant_approx(
+                self.milestones, self.main_data_sample.K, self.main_data_sample.t, 
+                slanting_force,
+                beta)
+        self.main_data_sample_unslanted = Data_sample()
+        self.main_data_sample_unslanted.N_ij = self.main_data_sample.N_ij
+        self.main_data_sample_unslanted.R_i = self.main_data_sample.R_i
+        self.main_data_sample_unslanted.t = unslanted_avg_time_vector
+        self.main_data_sample_unslanted.K = unslanted_transition_matrix
+        self.main_data_sample_unslanted.Q = unslanted_rate_matrix
+        if self.num_error_samples > 0:
+            for i, data_sample in enumerate(self.data_samples):
+                unslanted_rate_matrix, unslanted_transition_matrix, \
+                    unslanted_avg_time_vector \
+                    = remove_slant.unslant_transition_matrix_constant_approx(
+                        self.milestones, data_sample.K, data_sample.t, 
+                        slanting_force, beta)
+                data_sample_unslanted = Data_sample()
+                data_sample_unslanted.N_ij = self.main_data_sample.N_ij
+                data_sample_unslanted.R_i = self.main_data_sample.R_i
+                data_sample_unslanted.t = unslanted_avg_time_vector
+                data_sample_unslanted.K = unslanted_transition_matrix
+                data_sample_unslanted.Q = unslanted_rate_matrix
+                self.data_samples_unslanted.append(data_sample_unslanted)
+                
+        return
+
+class Analysis:
+    """
+    
+    """
+    def __init__(self, num_milestones, milestones, h):
+        self.num_milestones = num_milestones
+        self.milestones = milestones
+        self.main_data_sample = None
+        self.data_samples = []
+        self.p_i = None
+        self.p_i_error = None
+        self.free_energy_profile = None
+        self.free_energy_profile_err = None
+        self.diffusion_profile = None
+        self.diffusion_profile_err = None
+        self.MFPT = None
+        self.MFPT_error = None
+        self.k_off = None
+        self.k_off_error = None
+        self.h = h
+        return
+    
+    def avg_unslanted_xi_bins(self, xi_bins):
+        # First the main data sample
+        rate_matrix_sum = np.zeros((self.num_milestones, self.num_milestones))
+        transition_matrix_sum = np.zeros((self.num_milestones, self.num_milestones))
+        avg_time_vector_sum = np.zeros((self.num_milestones, 1))
+        counts_sum = np.zeros(self.num_milestones)
+        for i, xi_bin in enumerate(xi_bins):
+            for j in range(self.num_milestones):
+                rate_matrix_sum[:, j] += xi_bin.counts[j] \
+                    * xi_bin.main_data_sample_unslanted.Q[:, j]
+                transition_matrix_sum[:, j] += xi_bin.counts[j] \
+                    * xi_bin.main_data_sample_unslanted.K[:, j]
+                avg_time_vector_sum[j, 0] += xi_bin.counts[j] \
+                    * xi_bin.main_data_sample_unslanted.t[j, 0]
+                counts_sum[j] += xi_bin.counts[j]
+            
+        rate_matrix_avg = np.zeros((self.num_milestones, self.num_milestones))
+        transition_matrix_avg = np.zeros((self.num_milestones, self.num_milestones))
+        avg_time_vector_avg = np.zeros((self.num_milestones, 1))
+        for j in range(self.num_milestones):
+            if counts_sum[j] == 0:
+                rate_matrix_avg[j-1, j] = rate_matrix_avg[j, j-1]
+                rate_matrix_avg[j, j] = -rate_matrix_avg[j, j-1]
+            else:
+                rate_matrix_avg[:, j] = rate_matrix_sum[:, j] / counts_sum[j]
+                transition_matrix_avg[:, j] = transition_matrix_sum[:, j] / counts_sum[j]
+            avg_time_vector_avg[j, 0] = avg_time_vector_sum[j, 0] / counts_sum[j]
+        
+        correct_milestoning_model_for_ramd(
+            rate_matrix_avg, transition_matrix_avg, avg_time_vector_avg)
+        
+        self.main_data_sample = Data_sample()
+        self.main_data_sample.t = avg_time_vector_avg
+        self.main_data_sample.K = transition_matrix_avg
+        self.main_data_sample.Q = rate_matrix_avg
+        
+        # Next the other data samples
+        self.num_error_samples = len(xi_bins[0].data_samples)
+        
+        if self.num_error_samples > 0:
+            for k in range(self.num_error_samples):
+                rate_matrix_sum = np.zeros((self.num_milestones, self.num_milestones))
+                transition_matrix_sum = np.zeros((self.num_milestones, self.num_milestones))
+                avg_time_vector_sum = np.zeros((self.num_milestones, 1))
+                counts_sum = np.zeros(self.num_milestones)
+                for i, xi_bin in enumerate(xi_bins):
+                    for j in range(self.num_milestones):
+                        rate_matrix_sum[:, j] += xi_bin.counts[j] \
+                            * xi_bin.data_samples_unslanted[k].Q[:, j]
+                        transition_matrix_sum[:, j] += xi_bin.counts[j] \
+                            * xi_bin.data_samples_unslanted[k].K[:, j]
+                        avg_time_vector_sum[j, 0] += xi_bin.counts[j] \
+                            * xi_bin.data_samples_unslanted[k].t[j, 0]
+                        counts_sum[j] += xi_bin.counts[j]
+                    
+                rate_matrix_avg = np.zeros((self.num_milestones, self.num_milestones))
+                transition_matrix_avg = np.zeros((self.num_milestones, self.num_milestones))
+                avg_time_vector_avg = np.zeros((self.num_milestones, 1))
+                for j in range(self.num_milestones):
+                    if counts_sum[j] == 0:
+                        rate_matrix_avg[j-1, j] = rate_matrix_avg[j, j-1]
+                        rate_matrix_avg[j, j] = -rate_matrix_avg[j, j-1]
+                    else:
+                        rate_matrix_avg[:, j] = rate_matrix_sum[:, j] / counts_sum[j]
+                        transition_matrix_avg[:, j] = transition_matrix_sum[:, j] / counts_sum[j]
+                    avg_time_vector_avg[j, 0] = avg_time_vector_sum[j, 0] / counts_sum[j]
+                
+                correct_milestoning_model_for_ramd(
+                    rate_matrix_avg, transition_matrix_avg, avg_time_vector_avg)
+                
+                new_data_sample = Data_sample()
+                new_data_sample.t = avg_time_vector_avg
+                new_data_sample.K = transition_matrix_avg
+                new_data_sample.Q = rate_matrix_avg
+                self.data_samples.append(new_data_sample)
+                
+        return
+    
+    def make_profiles(self, starting_index, wrap_sink, unitless_beta):
+        self.p_i = milestoning.compute_stationary_probabilities(
+            self.main_data_sample.K, self.main_data_sample.t, 
+            self.num_milestones, starting_index, wrap_sink=wrap_sink)
+        self.free_energy_profile = remove_slant.make_energy_profile(
+            self.p_i, unitless_beta, starting_index)
+        self.diffusion_profile = milestoning.compute_diffusion_coefficients(
+            self.main_data_sample.Q, self.num_milestones, self.h)
+        
+        p_i_list = []
+        free_energy_profile_list = []
+        diffusion_profile_list = []
+        if self.num_error_samples > 0:
+            for k, data_sample in range(self.data_samples):
+                p_i = milestoning.compute_stationary_probabilities(
+                    data_sample.K, data_sample.t, self.num_milestones, 
+                    starting_index, wrap_sink=wrap_sink)
+                free_energy_profile = remove_slant.make_energy_profile(
+                    p_i, unitless_beta, starting_index)
+                diffusion_profile = milestoning.compute_diffusion_coefficients(
+                    data_sample.Q, self.num_milestones, self.h)
+                p_i_list.append(p_i)
+                free_energy_profile_list.append(free_energy_profile)
+                diffusion_profile_list.append(diffusion_profile)
+                
+        self.p_i_error = np.zeros(self.p_i.shape)
+        self.free_energy_profile_err = np.zeros(
+            self.free_energy_profile.shape)
+        self.diffusion_profile_err = np.zeros(
+            self.diffusion_profile.shape)
+        
+        for i in range(self.p_i_error.shape[0]):
+            p_i_val_list = []
+            for j in range(len(p_i_list)):
+                p_i_val_list.append(p_i_list[j][i])
+            self.p_i_error[i] = np.std(p_i_val_list)
+        
+        for i in range(self.free_energy_profile_err.shape[0]):
+            free_energy_profile_val_list = []
+            for j in range(len(free_energy_profile_list)):
+                free_energy_profile_val_list.append(free_energy_profile_list[j][i])
+            self.free_energy_profile_err[i] = np.std(free_energy_profile_val_list)
+            
+        for i in range(self.diffusion_profile_err.shape[0]):
+            diffusion_profile_val_list = []
+            for j in range(len(diffusion_profile_val_list)):
+                diffusion_profile_val_list.append(diffusion_profile_list[j][i])
+            self.diffusion_profile_err[i] = np.std(diffusion_profile_val_list)
+            
+    def make_times(self, starting_index, bulk_milestone):
+        # Recompute main diagonal
+        
+        for j in range(self.num_milestones):
+            self.main_data_sample.Q[j, j] = 0.0
+            self.main_data_sample.Q[j, j] = -sum(self.main_data_sample.Q[:,j])
+        
+        time_estimate = compute_time(self.main_data_sample.Q, starting_index, 
+                                     bulk_milestone)
+        if self.num_error_samples > 0:
+            time_estimate_list = []
+            k_off_list = []
+            for k, data_sample in range(self.data_samples):
+                for j in range(self.num_milestones):
+                    data_sample.Q[j, j] = 0.0
+                    data_sample.Q[j, j] = -sum(data_sample.Q[:,j])
+                
+                time_estimate_val = compute_time(
+                    self.main_data_sample.Q, starting_index, bulk_milestone)
+                time_estimate_list.append(time_estimate_val)
+                k_off_list.append(1.0 / time_estimate_val)
+            
+            time_estimate_err = np.std(time_estimate_list)
+            k_off_err = np.std(k_off_list)
+        else:
+            time_estimate_err = 0.0
+            k_off_err = 0.0
+            
+        self.MFPT = time_estimate
+        self.MFPT_error = time_estimate_err
+        self.k_off = 1.0 / time_estimate
+        self.k_off_err = k_off_err
+        return
+        
+def make_xi_bins(num_xi_bins, num_milestones, milestones):
+    xi_bins = []
+    xi_bins_ranges = np.linspace(-1.0, 1.0, num_xi_bins+1)
+    for j in range(num_xi_bins):
+        midpoint = 0.5 * (xi_bins_ranges[j] + xi_bins_ranges[j+1])
+        #xi_values.append(xi_value)
+        xi_bin = Xi_bin(num_milestones, milestones, xi_bins_ranges[j], midpoint, 
+                        xi_bins_ranges[j+1])
+        xi_bins.append(xi_bin)
+        
+    return xi_bins
+
+def compute_time(rate_matrix, starting_index, bulk_milestone):
+    #rate_matrix = remove_slant.milestoning_statistics_from_profiles(
+    #    milestones, energy_profile_avg, diffusion_profile_avg, beta)
+    B, tau = PyGT.tools.load_CTMC(rate_matrix)
+    mfpt_ij, mfpt_ji = PyGT.mfpt.compute_MFPT(
+                    starting_index, bulk_milestone, B, tau)
+    time_estimate = mfpt_ji
+    return time_estimate
+
+def correct_milestoning_model_for_ramd(rate_matrix_avg, transition_matrix_avg,
+                                       avg_time_vector_avg):
+    end_rate = rate_matrix_avg[-3, -2]
+    rate_matrix_avg[-1, -2] = 0.5 * end_rate
+    rate_matrix_avg[-3, -2] = 0.5 * end_rate
+    rate_matrix_avg[-2, -2] = -end_rate
+    rate_matrix_avg[-2, -1] = end_rate
+    rate_matrix_avg[-1, -1] = -end_rate
+    
+    transition_matrix_avg[-1, -2] = 0.5
+    transition_matrix_avg[-3, -2] = 0.5
+    transition_matrix_avg[-2, -1] = 1.0
+    
+    avg_time_vector_avg[-1] = avg_time_vector_avg[-2]
+    return
