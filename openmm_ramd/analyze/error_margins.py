@@ -19,9 +19,23 @@ def Q_to_K(Q):
             if i == j:
                 K[i,j] = 0.0
             else:
-                K[i,j] = -Q[i,j] / Q[i,i]
+                if Q[j,j] == 0.0:
+                    K[i,j] = 0.0
+                else:
+                    K[i,j] = -Q[i,j] / Q[j,j]
     
     return K
+
+def Q_to_t(Q):
+    """Given a rate matrix Q, compute avg incubation time vector t."""
+    t = np.zeros((Q.shape[0], 1))
+    for i in range(Q.shape[0]):
+        if Q[i,i] == 0.0:
+            t[i, 0] = 0.0
+        else:
+            t[i, 0] = -1.0 / Q[i,i]
+            
+    return t
 
 def irreversible_stochastic_matrix_algorithm_sample(
         Q, N, R, nonzero_indices=None):
@@ -122,7 +136,6 @@ def monte_carlo_milestoning_error(
     """
     MAX_SKIP = 1000
     MAX_STRIDE = 100
-    #model = main_data_sample.model
     Q_ij = main_data_sample.Q
     N_ij = main_data_sample.N_ij
     R_i = main_data_sample.R_i
@@ -145,42 +158,24 @@ def monte_carlo_milestoning_error(
         
         R[i,0] = R_i[i]
         
-    #MFPTs_list = defaultdict(list)
-    #MFPTs_error = defaultdict(float)
-    #k_off_list = []
-    #k_ons_list = defaultdict(list)
-    #k_ons_error = defaultdict(float)
-    #p_i_list = []
-    #free_energy_profile_list = []
     data_sample_list = []
-    if verbose: print("collecting ", num, " MCMC samples from ", 
-                      num*(stride) + skip, " total moves")  
+    if verbose: print("collecting", num, "MCMC samples from", 
+                      num*(stride) + skip + 1, "total moves")  
     new_data_sample = None
-    for counter in range(num * (stride) + skip):
+    for counter in range(num * (stride) + skip + 1):
         #if verbose: print("MCMC stepnum: ", counter)
-        Qnew = irreversible_stochastic_matrix_algorithm_sample(Q, N, R)
-        
+        Qnew = irreversible_stochastic_matrix_algorithm_sample(Q.T, N.T, R)
         if counter > skip and counter % stride == 0:
             new_data_sample = samples.Data_sample()
             new_data_sample.N_ij = N_ij
             new_data_sample.R_i = R_i
-            new_data_sample.Q = Qnew
-            new_data_sample.K = Q_to_K(Qnew)
+            new_data_sample.Q = Qnew.T
+            new_data_sample.K = Q_to_K(Qnew.T)
+            new_data_sample.t = Q_to_t(Qnew.T)
+            data_sample_list.append(new_data_sample)
             
-            #new_data_sample.calculate_thermodynamics()
-            #new_data_sample.calculate_kinetics()
-            #p_i_list.append(new_data_sample.p_i)
-            #free_energy_profile_list.append(new_data_sample.free_energy_profile)
-            #for key in new_data_sample.MFPTs:
-            #    MFPTs_list[key].append(new_data_sample.MFPTs[key])
-            #k_off_list.append(new_data_sample.k_off)
-            #if model.using_bd():
-            #    for key in new_data_sample.k_ons:
-            #        k_ons_list[key].append(new_data_sample.k_ons[key])  
-            #data_sample_list.append(new_data_sample)
-            
-        Q = Qnew
-    
+        Q = Qnew.T
+
     assert new_data_sample is not None, "Nothing sampled in Monte Carlo "\
         "milestoning procedure. Please choose different arrangement of num, "\
         "skip, and stride."

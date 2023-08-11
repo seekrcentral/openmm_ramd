@@ -5,7 +5,7 @@ Base functions, classes, and constants for openmm_ramd analysis.
 import PyGT
 import numpy as np
 from openmm import unit
-
+import matplotlib.pyplot as plt
 
 import openmm_ramd.analyze.milestoning as milestoning
 import openmm_ramd.analyze.remove_slant as remove_slant
@@ -150,7 +150,7 @@ class Analysis:
             else:
                 rate_matrix_avg[:, j] = rate_matrix_sum[:, j] / counts_sum[j]
                 transition_matrix_avg[:, j] = transition_matrix_sum[:, j] / counts_sum[j]
-            avg_time_vector_avg[j, 0] = avg_time_vector_sum[j, 0] / counts_sum[j]
+                avg_time_vector_avg[j, 0] = avg_time_vector_sum[j, 0] / counts_sum[j]
         
         correct_milestoning_model_for_ramd(
             rate_matrix_avg, transition_matrix_avg, avg_time_vector_avg)
@@ -189,7 +189,7 @@ class Analysis:
                     else:
                         rate_matrix_avg[:, j] = rate_matrix_sum[:, j] / counts_sum[j]
                         transition_matrix_avg[:, j] = transition_matrix_sum[:, j] / counts_sum[j]
-                    avg_time_vector_avg[j, 0] = avg_time_vector_sum[j, 0] / counts_sum[j]
+                        avg_time_vector_avg[j, 0] = avg_time_vector_sum[j, 0] / counts_sum[j]
                 
                 correct_milestoning_model_for_ramd(
                     rate_matrix_avg, transition_matrix_avg, avg_time_vector_avg)
@@ -210,12 +210,11 @@ class Analysis:
             self.p_i, unitless_beta, starting_index)
         self.diffusion_profile = milestoning.compute_diffusion_coefficients(
             self.main_data_sample.Q, self.num_milestones, self.h)
-        
         p_i_list = []
         free_energy_profile_list = []
         diffusion_profile_list = []
         if self.num_error_samples > 0:
-            for k, data_sample in range(self.data_samples):
+            for k, data_sample in enumerate(self.data_samples):
                 p_i = milestoning.compute_stationary_probabilities(
                     data_sample.K, data_sample.t, self.num_milestones, 
                     starting_index, wrap_sink=wrap_sink)
@@ -226,31 +225,31 @@ class Analysis:
                 p_i_list.append(p_i)
                 free_energy_profile_list.append(free_energy_profile)
                 diffusion_profile_list.append(diffusion_profile)
-                
+        
         self.p_i_error = np.zeros(self.p_i.shape)
         self.free_energy_profile_err = np.zeros(
             self.free_energy_profile.shape)
         self.diffusion_profile_err = np.zeros(
             self.diffusion_profile.shape)
+        if self.num_error_samples > 0:
+            for i in range(self.p_i_error.shape[0]):
+                p_i_val_list = []
+                for j in range(len(p_i_list)):
+                    p_i_val_list.append(p_i_list[j][i])
+                self.p_i_error[i] = np.std(p_i_val_list)
+            for i in range(self.free_energy_profile_err.shape[0]):
+                free_energy_profile_val_list = []
+                for j in range(len(free_energy_profile_list)):
+                    free_energy_profile_val_list.append(free_energy_profile_list[j][i])
+                self.free_energy_profile_err[i] = np.std(free_energy_profile_val_list)
+            for i in range(self.diffusion_profile_err.shape[0]):
+                diffusion_profile_val_list = []
+                for j in range(len(diffusion_profile_list)):
+                    diffusion_profile_val_list.append(diffusion_profile_list[j][i])
+                self.diffusion_profile_err[i] = np.std(diffusion_profile_val_list)
+        return
+    
         
-        for i in range(self.p_i_error.shape[0]):
-            p_i_val_list = []
-            for j in range(len(p_i_list)):
-                p_i_val_list.append(p_i_list[j][i])
-            self.p_i_error[i] = np.std(p_i_val_list)
-        
-        for i in range(self.free_energy_profile_err.shape[0]):
-            free_energy_profile_val_list = []
-            for j in range(len(free_energy_profile_list)):
-                free_energy_profile_val_list.append(free_energy_profile_list[j][i])
-            self.free_energy_profile_err[i] = np.std(free_energy_profile_val_list)
-            
-        for i in range(self.diffusion_profile_err.shape[0]):
-            diffusion_profile_val_list = []
-            for j in range(len(diffusion_profile_val_list)):
-                diffusion_profile_val_list.append(diffusion_profile_list[j][i])
-            self.diffusion_profile_err[i] = np.std(diffusion_profile_val_list)
-            
     def make_times(self, starting_index, bulk_milestone):
         # Recompute main diagonal
         
@@ -263,27 +262,53 @@ class Analysis:
         if self.num_error_samples > 0:
             time_estimate_list = []
             k_off_list = []
-            for k, data_sample in range(self.data_samples):
+            for k, data_sample in enumerate(self.data_samples):
                 for j in range(self.num_milestones):
                     data_sample.Q[j, j] = 0.0
                     data_sample.Q[j, j] = -sum(data_sample.Q[:,j])
                 
                 time_estimate_val = compute_time(
-                    self.main_data_sample.Q, starting_index, bulk_milestone)
+                    data_sample.Q, starting_index, bulk_milestone)
                 time_estimate_list.append(time_estimate_val)
                 k_off_list.append(1.0 / time_estimate_val)
             
             time_estimate_err = np.std(time_estimate_list)
             k_off_err = np.std(k_off_list)
         else:
-            time_estimate_err = 0.0
-            k_off_err = 0.0
+            time_estimate_err = np.inf
+            k_off_err = np.inf
             
         self.MFPT = time_estimate
         self.MFPT_error = time_estimate_err
         self.k_off = 1.0 / time_estimate
-        self.k_off_err = k_off_err
+        self.k_off_error = k_off_err
         return
+    
+    def print_results(self):
+        print("Printing results from RAMD analysis.")
+        print("MFPT (ps):", pretty_string_value_error(
+            self.MFPT, self.MFPT_error))
+        print("k_off (1/ps):", pretty_string_value_error(
+            self.k_off, self.k_off_error))
+        return
+    
+    def create_plots(self):
+        pi_fig, ax1 = plt.subplots()
+        ax1.errorbar(np.round(self.milestones, 3), self.free_energy_profile, 
+                     yerr=self.free_energy_profile_err, color="r", ecolor="r", 
+                     capsize=2)
+        ax1.set_xticks(np.round(self.milestones, 3), 
+                       np.round(self.milestones, 3), rotation=75)
+        ax1.set_ylabel("\u0394G(z) (kcal/mol)", color="r")
+        ax1.set_xlabel("z(nm)")
+        ax2 = ax1.twinx()
+        ax2.set_ylabel("D(z) ($nm^2/s$)", color="b")
+        ax2.errorbar(np.round(self.milestones, 3), self.diffusion_profile, 
+                     yerr=self.diffusion_profile_err, color="b", ecolor="b", 
+                     capsize=2)
+        plt.tight_layout()
+        #pi_fig.savefig(os.path.join(image_directory, "profile.png"))
+        plt.show()
         
 def make_xi_bins(num_xi_bins, num_milestones, milestones):
     xi_bins = []
@@ -321,3 +346,80 @@ def correct_milestoning_model_for_ramd(rate_matrix_avg, transition_matrix_avg,
     
     avg_time_vector_avg[-1] = avg_time_vector_avg[-2]
     return
+
+def pretty_string_value_error(value, error, error_digits=2, use_unicode=True):
+    """
+    Copied from seekr2
+    
+    Returns a value/error combination of numbers in a scientifically 
+    'pretty' format.
+    
+    Scientific quantities often come as a *value* (the actual 
+    quantity) and the *error* (the uncertainty in the value).
+        
+    Given two floats, value and error, return the two in a 
+    'pretty' formatted string: where the value and error are truncated
+    at the correct precision.
+    
+    Parameters
+    ----------
+    value : float
+        The quantity in question
+        
+    error : float
+        The uncertainty of the quantity
+        
+    error_digits : int, default 2
+        How many significant figures the error has. Scientific 
+        convention holds that errors have 1 or (at most) 2 significant
+        figures. The larger number of digits is chosen here by default.
+        
+    Returns
+    -------
+    new_string : str
+        A new list of strings sorted numerically
+    
+    Examples
+    --------
+    
+        >>> pretty_string_value_error(1.23456789e8, 4.5678e5, 
+                                      error_digits=2)
+        "1.2346 +/- 0.0046 * 10^+08"
+    
+        >>> pretty_string_value_error(5.6e-2, 2.0e-3, error_digits=1)
+        "5.6 +/- 0.2 * 10^-02"
+    """
+    if value is None:
+        return "None"
+    if error is None or not np.isfinite(error):
+        if use_unicode:
+            new_string = "{:.6E} \u00B1 UNKNOWN ERROR MARGIN".format(value)
+        else:
+            new_string = "{:.6E} +/- UNKNOWN ERROR MARGIN".format(value)
+    else:
+        if not np.isfinite(value):
+            return str(value)
+        assert "e" in "{:e}".format(value), "Cannot convert into scientific "\
+            "notation: {1}".format(value)
+        value_mantissa_str, value_exponent_str = \
+            "{:e}".format(value).strip().split('e')
+        value_mantissa = float(value_mantissa_str)
+        value_exponent = int(value_exponent_str)
+        error_mantissa_str, error_exponent_str = \
+            "{:e}".format(error).strip().split('e')
+        error_mantissa = float(error_mantissa_str)
+        error_exponent = int(error_exponent_str)
+        padding = value_exponent - error_exponent + error_digits - 1
+        if padding < 1: padding = 1
+        exp_diff = error_exponent - value_exponent
+        string_for_formatting = "{:.%df}" % padding
+        new_value_mantissa = string_for_formatting.format(value_mantissa)
+        new_error_mantissa = string_for_formatting.format(
+            error_mantissa*10**exp_diff)
+        if use_unicode:
+            new_string = "(%s \u00B1 %s) * 10^%s" % (
+                new_value_mantissa, new_error_mantissa, value_exponent_str)
+        else:
+            new_string = "(%s +/- %s) * 10^%s" % (
+                new_value_mantissa, new_error_mantissa, value_exponent_str)
+    return new_string

@@ -36,6 +36,9 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     timeStep = None
     temperature = None
     maxDist = None
+    if verbose:
+        print("Now loading log files...")
+        
     for ramd_log_filename in ramd_log_file_list:
         trajectories, forceOutFreq_, forceRAMD_, timeStep_, num_trajectories_, \
             temperature_, maxDist_ = parser.parse_ramd_log_file(
@@ -79,12 +82,11 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
                                                   maxDist)
     bulk_milestone = num_milestones - 1
     if verbose:
-        print("milestones:", milestones, "h:", h)
+        np.set_printoptions(precision=3)
+        print("milestones:", np.array(milestones), "h:", f"{h:.3f}")
         print("starting_index:", starting_index)
         
-    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones)
-    print("xi_bins:", xi_bins)
-        
+    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones)        
     for i, trajectory in enumerate(one_dim_trajs):
         traj_xi = trajectory[0][1]
         found_bin = False
@@ -128,18 +130,17 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     analysis.avg_unslanted_xi_bins(xi_bins)
     
     # Next: make energy and diffusion profiles for analysis object
-    
     analysis.make_profiles(starting_index, wrap_sink=False, 
                            unitless_beta=unitless_beta)
-    
     analysis.make_times(starting_index, bulk_milestone)
     
     #plt.plot(milestones, averaged_energy_profile, "r", label="Recovered Potential energy $W(z) (kJ/mol)$")
     #plt.plot(milestones, avg_time_vector_avg, "b", label="Time vector")
     #plt.ylim((-15.0, 10.0))
     #plt.show()
-    
     return analysis
+
+
 
 # TODO: add Torque balancing in the RAMD.
 if __name__ == "__main__":
@@ -193,4 +194,5 @@ if __name__ == "__main__":
         stride_error_samples=stride_error_samples, 
         skip_error_samples=skip_error_samples)
     
-    print("Estimated unbiased time:", analysis.MFPT)
+    analysis.print_results()
+    analysis.create_plots()
