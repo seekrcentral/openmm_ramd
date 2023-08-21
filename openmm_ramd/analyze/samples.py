@@ -28,6 +28,7 @@ class Data_sample():
         self.K_hat = None
         self.p_i = None
         self.free_energy_profile = None
+        self.diffusion_profile = None
         self.MFPT = None
         self.k_off = None
 
@@ -49,6 +50,14 @@ class Xi_bin():
         self.data_samples_unslanted = []
         self.counts = None
         self.num_error_samples = 0
+        
+        # DEBUG
+        #self.p_i_slanted = None
+        #self.free_energy_profile_slanted = None
+        #self.diffusion_profile_slanted = None
+        #self.p_i_unslanted = None
+        #self.free_energy_profile_unslanted = None
+        #self.diffusion_profile_unslanted = None
         return
     
     def assign_main_data_sample(self, count_matrix, time_vector, 
@@ -70,21 +79,64 @@ class Xi_bin():
             self.main_data_sample, num_error_samples, skip_error_samples, 
             stride_error_samples)
         return
+    
+    def assign_unslanted_data(
+            self, unslanted_avg_time_vector, 
+            unslanted_transition_matrix, unslanted_rate_matrix):
+        data_sample = Data_sample()
+        data_sample.N_ij = self.main_data_sample.N_ij
+        data_sample.R_i = self.main_data_sample.R_i
+        data_sample.t = unslanted_avg_time_vector
+        data_sample.K = unslanted_transition_matrix
+        data_sample.Q = unslanted_rate_matrix
+        return data_sample
+    
+    def unslant_data_samples_mode_1(
+            self, starting_index, forceRAMD_in_nm_unitless, beta):
+        slanting_force = -self.midpoint * forceRAMD_in_nm_unitless
+        unslanted_energy_profile = remove_slant.remove_slant(
+            self.milestones, self.main_data_sample.free_energy_profile, -slanting_force, 
+            ref_milestone_index=starting_index)
+        unslanted_rate_matrix, unslanted_transition_matrix, \
+            unslanted_avg_time_vector \
+            = remove_slant.milestoning_statistics_from_profiles(
+                self.milestones, unslanted_energy_profile, 
+                self.main_data_sample.diffusion_profile, beta)
+        new_data_sample = self.assign_unslanted_data(
+            unslanted_avg_time_vector, unslanted_transition_matrix, 
+            unslanted_rate_matrix)
+        self.main_data_sample_unslanted = new_data_sample
         
-    def unslant_data_samples(self, forceRAMD_in_nm_unitless, beta):
-        slanting_force = self.midpoint * forceRAMD_in_nm_unitless
+        if self.num_error_samples > 0:
+            for i, data_sample in enumerate(self.data_samples):
+                self.make_profiles(starting_index, wrap_sink=False, 
+                                     unitless_beta=beta, data_sample=data_sample)
+                unslanted_energy_profile = remove_slant.remove_slant(
+                    self.milestones, data_sample.free_energy_profile, -slanting_force, 
+                    ref_milestone_index=starting_index)
+                unslanted_rate_matrix, unslanted_transition_matrix, \
+                unslanted_avg_time_vector \
+                    = remove_slant.milestoning_statistics_from_profiles(
+                        self.milestones, unslanted_energy_profile, 
+                        data_sample.diffusion_profile, beta)
+                new_data_sample = self.assign_unslanted_data(
+                    unslanted_avg_time_vector, unslanted_transition_matrix, 
+                    unslanted_rate_matrix)
+                self.data_samples_unslanted.append(new_data_sample)
+        return
+    
+    def unslant_data_samples_mode_2(self, forceRAMD_in_nm_unitless, beta):
+        slanting_force = -self.midpoint * forceRAMD_in_nm_unitless
         unslanted_rate_matrix, unslanted_transition_matrix, \
             unslanted_avg_time_vector \
                 = remove_slant.unslant_transition_matrix_constant_approx(
-                self.milestones, self.main_data_sample.K, self.main_data_sample.t, 
-                slanting_force,
-                beta)
-        self.main_data_sample_unslanted = Data_sample()
-        self.main_data_sample_unslanted.N_ij = self.main_data_sample.N_ij
-        self.main_data_sample_unslanted.R_i = self.main_data_sample.R_i
-        self.main_data_sample_unslanted.t = unslanted_avg_time_vector
-        self.main_data_sample_unslanted.K = unslanted_transition_matrix
-        self.main_data_sample_unslanted.Q = unslanted_rate_matrix
+                self.milestones, self.main_data_sample.K, 
+                self.main_data_sample.t, slanting_force, beta)
+        new_data_sample = self.assign_unslanted_data(
+            unslanted_avg_time_vector, unslanted_transition_matrix, 
+            unslanted_rate_matrix)
+        self.main_data_sample_unslanted = new_data_sample
+        
         if self.num_error_samples > 0:
             for i, data_sample in enumerate(self.data_samples):
                 unslanted_rate_matrix, unslanted_transition_matrix, \
@@ -92,15 +144,40 @@ class Xi_bin():
                     = remove_slant.unslant_transition_matrix_constant_approx(
                         self.milestones, data_sample.K, data_sample.t, 
                         slanting_force, beta)
-                data_sample_unslanted = Data_sample()
-                data_sample_unslanted.N_ij = self.main_data_sample.N_ij
-                data_sample_unslanted.R_i = self.main_data_sample.R_i
-                data_sample_unslanted.t = unslanted_avg_time_vector
-                data_sample_unslanted.K = unslanted_transition_matrix
-                data_sample_unslanted.Q = unslanted_rate_matrix
-                self.data_samples_unslanted.append(data_sample_unslanted)
-                
+                new_data_sample = self.assign_unslanted_data(
+                    unslanted_avg_time_vector, unslanted_transition_matrix, 
+                    unslanted_rate_matrix)
+                self.data_samples_unslanted.append(new_data_sample)
+        
         return
+    
+    # For debug purposes
+    def make_profiles(self, starting_index, wrap_sink, unitless_beta,
+                              data_sample=None):
+        h = self.milestones[1] - self.milestones[0]
+        if data_sample is None:
+            data_sample = self.main_data_sample
+        data_sample.p_i = milestoning.compute_stationary_probabilities(
+            data_sample.K, data_sample.t, 
+            self.num_milestones, starting_index, wrap_sink=wrap_sink)
+        data_sample.free_energy_profile = remove_slant.make_energy_profile(
+            data_sample.p_i, unitless_beta, starting_index)
+        data_sample.diffusion_profile = milestoning.compute_diffusion_coefficients(
+            data_sample.Q, self.num_milestones, h)
+    
+    # For debug purposes
+    #def make_profiles_unslanted(self, starting_index, wrap_sink, unitless_beta,
+    #                            data_sample=None):
+    #    h = self.milestones[1] - self.milestones[0]
+    #    if data_sample is None:
+    #        data_sample = self.main_data_sample_unslanted
+    #    data_sample.p_i = milestoning.compute_stationary_probabilities(
+    #        data_sample.K, data_sample.t, 
+    #        self.num_milestones, starting_index, wrap_sink=wrap_sink)
+    #    self.free_energy_profile_unslanted = remove_slant.make_energy_profile(
+    #        self.p_i_unslanted, unitless_beta, starting_index)
+    #    self.diffusion_profile_unslanted = milestoning.compute_diffusion_coefficients(
+    #        data_sample.Q, self.num_milestones, h)
 
 class Analysis:
     """
@@ -247,12 +324,11 @@ class Analysis:
                 for j in range(len(diffusion_profile_list)):
                     diffusion_profile_val_list.append(diffusion_profile_list[j][i])
                 self.diffusion_profile_err[i] = np.std(diffusion_profile_val_list)
+                
         return
-    
         
     def make_times(self, starting_index, bulk_milestone):
         # Recompute main diagonal
-        
         for j in range(self.num_milestones):
             self.main_data_sample.Q[j, j] = 0.0
             self.main_data_sample.Q[j, j] = -sum(self.main_data_sample.Q[:,j])
@@ -263,14 +339,19 @@ class Analysis:
             time_estimate_list = []
             k_off_list = []
             for k, data_sample in enumerate(self.data_samples):
+                tmp_float128 = data_sample.Q.astype(np.longdouble)
                 for j in range(self.num_milestones):
                     data_sample.Q[j, j] = 0.0
                     data_sample.Q[j, j] = -sum(data_sample.Q[:,j])
                 
-                time_estimate_val = compute_time(
-                    data_sample.Q, starting_index, bulk_milestone)
-                time_estimate_list.append(time_estimate_val)
-                k_off_list.append(1.0 / time_estimate_val)
+                try:
+                    time_estimate_val = compute_time(
+                        tmp_float128, starting_index, bulk_milestone)
+                    time_estimate_list.append(float(time_estimate_val))
+                    k_off_list.append(1.0 / time_estimate_val)
+                except AssertionError:
+                    print(f"Unstable sampled error matrix in iteration {k}. Skipping")
+                    continue
             
             time_estimate_err = np.std(time_estimate_list)
             k_off_err = np.std(k_off_list)
@@ -294,17 +375,17 @@ class Analysis:
     
     def create_plots(self):
         pi_fig, ax1 = plt.subplots()
-        ax1.errorbar(np.round(self.milestones, 3), self.free_energy_profile, 
-                     yerr=self.free_energy_profile_err, color="r", ecolor="r", 
+        ax1.errorbar(np.round(self.milestones[:-1], 3), self.free_energy_profile[:-1], 
+                     yerr=self.free_energy_profile_err[:-1], color="r", ecolor="r", 
                      capsize=2)
-        ax1.set_xticks(np.round(self.milestones, 3), 
-                       np.round(self.milestones, 3), rotation=75)
+        ax1.set_xticks(np.round(self.milestones[:-1], 3), 
+                       np.round(self.milestones[:-1], 3), rotation=75)
         ax1.set_ylabel("\u0394G(z) (kcal/mol)", color="r")
         ax1.set_xlabel("z(nm)")
         ax2 = ax1.twinx()
         ax2.set_ylabel("D(z) ($nm^2/s$)", color="b")
-        ax2.errorbar(np.round(self.milestones, 3), self.diffusion_profile, 
-                     yerr=self.diffusion_profile_err, color="b", ecolor="b", 
+        ax2.errorbar(np.round(self.milestones[:-2], 3), self.diffusion_profile[:-2], 
+                     yerr=self.diffusion_profile_err[:-2], color="b", ecolor="b", 
                      capsize=2)
         plt.tight_layout()
         #pi_fig.savefig(os.path.join(image_directory, "profile.png"))
@@ -329,22 +410,33 @@ def compute_time(rate_matrix, starting_index, bulk_milestone):
     mfpt_ij, mfpt_ji = PyGT.mfpt.compute_MFPT(
                     starting_index, bulk_milestone, B, tau)
     time_estimate = mfpt_ji
+        
     return time_estimate
 
-def correct_milestoning_model_for_ramd(rate_matrix_avg, transition_matrix_avg,
-                                       avg_time_vector_avg):
+def correct_rate_matrix_for_ramd(rate_matrix_avg):
     end_rate = rate_matrix_avg[-3, -2]
     rate_matrix_avg[-1, -2] = 0.5 * end_rate
     rate_matrix_avg[-3, -2] = 0.5 * end_rate
     rate_matrix_avg[-2, -2] = -end_rate
-    rate_matrix_avg[-2, -1] = end_rate
-    rate_matrix_avg[-1, -1] = -end_rate
-    
+    rate_matrix_avg[-2, -1] = 0.5 * end_rate
+    rate_matrix_avg[-1, -1] = -0.5 * end_rate
+    return
+
+def correct_transition_matrix_for_ramd(transition_matrix_avg):
     transition_matrix_avg[-1, -2] = 0.5
     transition_matrix_avg[-3, -2] = 0.5
     transition_matrix_avg[-2, -1] = 1.0
-    
+    return
+
+def correct_avg_time_vector_for_ramd(avg_time_vector_avg):
     avg_time_vector_avg[-1] = avg_time_vector_avg[-2]
+    return
+
+def correct_milestoning_model_for_ramd(rate_matrix_avg, transition_matrix_avg,
+                                       avg_time_vector_avg):
+    correct_rate_matrix_for_ramd(rate_matrix_avg)
+    correct_transition_matrix_for_ramd(transition_matrix_avg)
+    correct_avg_time_vector_for_ramd(avg_time_vector_avg)
     return
 
 def pretty_string_value_error(value, error, error_digits=2, use_unicode=True):

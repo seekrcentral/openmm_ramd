@@ -9,6 +9,7 @@ import numpy as np
 from scipy import linalg as la
 
 MATRIX_EXPONENTIAL = 9999999999
+DEFAULT_DIFFUSION_COEFF = 100.0
 
 def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
     """
@@ -153,9 +154,9 @@ def make_milestoning_model(
         if column_sum_down > 0.0:
             avg_time_vector_down[i, 0] = time_vector_down[i, 0] / column_sum_down
                 
-    avg_time_vector[0, 0] *= 0.5 # times need to be cut in half for end states
-    avg_time_vector_up[0, 0] *= 0.5
-    avg_time_vector_down[0, 0] *= 0.5
+    #avg_time_vector[0, 0] *= 0.5 # times need to be cut in half for end states
+    #avg_time_vector_up[0, 0] *= 0.5
+    #avg_time_vector_down[0, 0] *= 0.5
     
     return count_matrix, time_vector, time_vector_up, time_vector_down, \
         avg_time_vector, avg_time_vector_up, avg_time_vector_down
@@ -173,7 +174,7 @@ def make_transition_matrix(num_milestones, count_matrix):
     return transition_matrix
 
 def make_rate_matrix(num_milestones, transition_matrix, avg_time_vector):
-    rate_matrix = np.zeros((num_milestones, num_milestones))
+    rate_matrix = np.zeros((num_milestones, num_milestones), dtype=np.longdouble)
     for i in range(num_milestones):
         for j in range(num_milestones):
             if avg_time_vector[j,0] == 0.0:
@@ -218,10 +219,11 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
     q_i = q_i / np.sum(q_i)
     p_i = np.zeros(num_milestones)
     for i in range(num_milestones):
-        if i == 0 or i == num_milestones - 1:
+        #if i == 0 or i == num_milestones - 1:
+        if i == num_milestones - 1:
             # This is because at the ends, the reflective boundary conditions
             #  cause the flux to be undercounted by a factor of 2
-            flux_factor = 1.0
+            flux_factor = 2.0
         else:
             flux_factor = 1.0
             
@@ -237,10 +239,8 @@ def compute_diffusion_coefficients(rate_matrix, num_milestones, milestone_spacin
     diffusion_coeffs = np.zeros(num_milestones)
     for i in range(num_milestones):
         if i == 0:
-            diffusion_coeffs[0] = 0.5 * milestone_spacing**2 \
+            diffusion_coeffs[0] = milestone_spacing**2 \
                 * rate_matrix[1, 0]
-            #diffusion_coeffs[0] = milestone_spacing**2 \
-            #    * rate_matrix[1, 0]
 
         elif i == num_milestones - 1:
             last = num_milestones - 1
@@ -255,6 +255,9 @@ def compute_diffusion_coefficients(rate_matrix, num_milestones, milestone_spacin
                 * rate_matrix[i+1, i]
             diffusion_coeffs[i] += 0.5 * milestone_spacing**2 \
                 * rate_matrix[i-1, i]
+        
+        if diffusion_coeffs[i] == 0.0:
+            diffusion_coeffs[i] = DEFAULT_DIFFUSION_COEFF
                 
     return diffusion_coeffs
 

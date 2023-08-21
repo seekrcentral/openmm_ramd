@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.integrate as sp_int
 
+import openmm_ramd.analyze.samples as samples
 import openmm_ramd.analyze.milestoning as milestoning
 import openmm_ramd.analyze.remove_slant as remove_slant
 import openmm_ramd.analyze.analyze_log as analyze_log
@@ -31,14 +32,14 @@ start_z = 1.0
 
 # number of finite elements for integration
 n_z = 1000
-num_milestones = 101
+num_milestones = 21
 num_xi_bins = 10
 start_milestone_index = num_milestones // 10
 
 WELL_DEPTH = 7.0
 force_magnitude = 5.0
 
-MODE = 2
+MODE = 1
 
 def potential_energy_flat(z, force_constant, start=0.0, u=None):
     """
@@ -92,7 +93,7 @@ def potential_energy_well_2(z, force_constant, u=None):
     #print("min_val:", min_val)
     val = (displacement-a)*(displacement-b)*np.exp(c*displacement)
     norm_val = (-val / min_val) + 1.0
-    scaled_val = well_depth * norm_val + displacement*force_constant*factor
+    scaled_val = well_depth * norm_val - displacement*force_constant*factor
     return scaled_val
 
 def diffusion_coefficient_flat(z, D):
@@ -290,6 +291,15 @@ def milestoning_statistics_from_profiles(
         rate_matrix[i, i] = -1.0 / time
     return transition_matrix, avg_time_vector, rate_matrix, count_matrix
 
+def make_time_vector_from_avg_time_vector(count_matrix, avg_time_vector):
+    n = count_matrix.shape[0]
+    time_vector = np.zeros(avg_time_vector.shape)
+    for i in range(n):
+        count = np.sum(count_matrix[:,i])
+        time_vector[i, 0] = count * avg_time_vector[i, 0]
+    
+    return time_vector
+
 if __name__ == "__main__":
     # Define a potential energy landscape
     h_z = (max_z - min_z) / n_z
@@ -331,7 +341,8 @@ if __name__ == "__main__":
     milestone_h = milestones[1] - milestones[0]
     bulk_milestone = num_milestones - 1
     
-    xi_bins, xi_values, xi_bins_ranges = analyze_log.make_xi_bins(num_xi_bins)
+    #xi_bins, xi_values, xi_bins_ranges = analyze_log.make_xi_bins(num_xi_bins)
+    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones)
     
     unslanted_energy_profiles = np.zeros((num_xi_bins, num_milestones))
     diffusion_profiles = np.zeros((num_xi_bins, num_milestones))
@@ -342,8 +353,9 @@ if __name__ == "__main__":
     avg_time_vector_sum = np.zeros((num_milestones, 1))
     counts_sum = np.zeros(num_milestones)
     
-    for i in range(num_xi_bins):
-        xi = xi_values[i]
+    #for i in range(num_xi_bins):
+    for i, xi_bin in enumerate(xi_bins):
+        xi = xi_bin.midpoint
         slanting_force = xi * force_magnitude
         min_potential_y1, potential_energy_slant, diffusion_coefficient_slant \
         = make_potential_and_diffusion(
@@ -354,6 +366,17 @@ if __name__ == "__main__":
             = milestoning_statistics_from_profiles(
             milestones, z_s, potential_energy_slant, diffusion_coefficient_slant, beta)
         
+        time_vector = make_time_vector_from_avg_time_vector(
+            count_matrix, avg_time_vector)
+        
+        xi_bin.assign_main_data_sample(
+            count_matrix, time_vector, avg_time_vector)
+        
+        xi_bin.main_data_sample.K = transition_matrix
+        xi_bin.main_data_sample.Q = milestoning.make_rate_matrix(
+            num_milestones, xi_bin.main_data_sample.K, avg_time_vector)
+        
+        """
         if MODE == 1:
             energy_profile, diffusion_profile, counts \
                     = remove_slant.recover_profiles(
@@ -383,16 +406,31 @@ if __name__ == "__main__":
             transition_matrix_sum[:, j] += counts[j] * unslanted_transition_matrix[:, j]
             avg_time_vector_sum[j, 0] += counts[j] * unslanted_time_vector[j, 0]
             counts_sum[j] += counts[j]
-        
+        """
         #unslanted_energy_profiles[i, :] = unslanted_energy_profile
         #diffusion_profiles[i, :] = diffusion_profile
         #counts_profiles[i, :] = counts
+        #xi_bin.unslant_data_samples(force_magnitude, beta)
+        xi_bin.make_profiles(start_milestone_index, wrap_sink=False, 
+                                     unitless_beta=beta)
+        if MODE == 1:
+            xi_bin.unslant_data_samples_mode_1(
+                start_milestone_index, force_magnitude, beta)
+        elif MODE == 2:
+            xi_bin.unslant_data_samples_mode_2(force_magnitude, beta)
+        xi_bin.counts = milestoning.compute_counts(count_matrix, num_milestones)
         
-        recovered_stationary_probs = milestoning.compute_stationary_probabilities(
-            unslanted_transition_matrix, unslanted_time_vector, num_milestones)
+        #recovered_stationary_probs = milestoning.compute_stationary_probabilities(
+        #    unslanted_transition_matrix, unslanted_time_vector, num_milestones)
         
-        recovered_energy_profile = remove_slant.make_energy_profile(
-            recovered_stationary_probs, beta, start_milestone_index)
+        # recovered_energy_profile = remove_slant.make_energy_profile(
+        #     recovered_stationary_probs, beta, start_milestone_index)
+        
+        
+        xi_bin.make_profiles(start_milestone_index, wrap_sink=False, 
+                             unitless_beta=beta, data_sample=xi_bin.main_data_sample_unslanted)
+        #plt.plot(milestones, xi_bin.main_data_sample.free_energy_profile, label=f"$\\xi$={xi:.2f}")
+        #plt.plot(milestones, xi_bin.main_data_sample_unslanted.free_energy_profile, label=f"$\\xi$={xi:.2f}")
         
         #stationary_probs_norm = stationary_probs / sp_int.simps(stationary_probs, dx=milestone_h)
         

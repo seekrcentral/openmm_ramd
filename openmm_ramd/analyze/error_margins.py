@@ -164,6 +164,7 @@ def monte_carlo_milestoning_error(
     new_data_sample = None
     for counter in range(num * (stride) + skip + 1):
         #if verbose: print("MCMC stepnum: ", counter)
+        
         Qnew = irreversible_stochastic_matrix_algorithm_sample(Q.T, N.T, R)
         if counter > skip and counter % stride == 0:
             new_data_sample = samples.Data_sample()
@@ -175,6 +176,8 @@ def monte_carlo_milestoning_error(
             data_sample_list.append(new_data_sample)
             
         Q = Qnew.T
+        Q[:,-2:] = Q_ij[:,-2:]
+        
 
     assert new_data_sample is not None, "Nothing sampled in Monte Carlo "\
         "milestoning procedure. Please choose different arrangement of num, "\

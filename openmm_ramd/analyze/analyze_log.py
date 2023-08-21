@@ -25,7 +25,8 @@ import openmm_ramd.analyze.remove_slant as remove_slant
 # TODO: break some of this code down into smaller functions
 def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5, 
                 verbose=True, toy_mode=False, num_error_samples=0, 
-                stride_error_samples=None, skip_error_samples=None):
+                stride_error_samples=None, skip_error_samples=None, mode=2,
+                cut_out_drift=False):
     if verbose:
         print(f"Using {num_milestones} milestones.")
         print(f"Using {num_xi_bins} angle bins.")
@@ -86,7 +87,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
         print("milestones:", np.array(milestones), "h:", f"{h:.3f}")
         print("starting_index:", starting_index)
         
-    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones)        
+    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones)
     for i, trajectory in enumerate(one_dim_trajs):
         traj_xi = trajectory[0][1]
         found_bin = False
@@ -106,6 +107,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     forceRAMD_in_A = forceRAMD * unit.kilocalories_per_mole
     
     for i, xi_bin in enumerate(xi_bins):
+        xi = xi_bin.midpoint
         if verbose:
             print(f"num trajectories in bin {i}: {len(xi_bin.trajs)}")
         assert len(xi_bin.trajs) > 0, "All angle bins need trajectories. "\
@@ -114,7 +116,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
             avg_time_vector, avg_time_vector_up, avg_time_vector_down \
             = milestoning.make_milestoning_model(
                 xi_bin.trajs, milestones, frame_time, num_milestones,
-                remove_unbalanced_frame_counts=False)
+                remove_unbalanced_frame_counts=cut_out_drift)
         
         xi_bin.assign_main_data_sample(
             count_matrix, time_vector, avg_time_vector)
@@ -123,9 +125,32 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
             xi_bin.sample_error_matrices(
                 num_error_samples, stride_error_samples, skip_error_samples)
         
-        xi_bin.unslant_data_samples(forceRAMD_in_nm_unitless, beta)
+        xi_bin.make_profiles(starting_index, wrap_sink=False, 
+                                     unitless_beta=unitless_beta)
+        if mode == 1:
+            xi_bin.unslant_data_samples_mode_1(
+                starting_index, forceRAMD_in_nm_unitless, beta)
+        elif mode == 2:
+            xi_bin.unslant_data_samples_mode_2(forceRAMD_in_nm_unitless, beta)
+        else:
+            raise Exception(f"Mode not allowed: {mode}")
+        
         xi_bin.counts = milestoning.compute_counts(count_matrix, num_milestones)
         
+        xi_bin.make_profiles(starting_index, wrap_sink=False, 
+                             unitless_beta=unitless_beta, 
+                             data_sample=xi_bin.main_data_sample_unslanted)
+        #plt.plot(milestones, xi_bin.main_data_sample.free_energy_profile, label=f"$\\xi$={xi:.2f}")
+        #plt.plot(milestones, xi_bin.main_data_sample_unslanted.free_energy_profile, label=f"$\\xi$={xi:.2f}")
+        
+    #plt.legend()
+    #plt.ylabel("$W(z)$ (kJ/mol)")
+    #plt.xlabel("$z$ (nm)")
+    #plt.title("Free energy profiles of xi bins")
+    #plt.ylim((0.0, 2.0*1.5))
+    #plt.show()
+    #exit()
+    
     analysis = samples.Analysis(num_milestones, milestones, h)
     analysis.avg_unslanted_xi_bins(xi_bins)
     
@@ -177,6 +202,17 @@ if __name__ == "__main__":
         default=None, type=int, help="Specify the number of error samples. "\
         "An argument of None automatically assigns the quantity at ten times "\
         "the number of milestones in the model squared. Default: None.")
+    argparser.add_argument(
+        "-m", "--mode", dest="mode", default=2,
+        help="Mode 1 attempts to construct slanted energy profiles to compute "\
+        "the unslanted statistics. Mode 2 uses a linear adjustment directly "\
+        "to the transition matrices.", type=int)
+    argparser.add_argument(
+        "-c", "--cut_out_drift", dest="cut_out_drift", default=False,
+        help="Exact milestoning theory requires truly equilibrium "\
+        "trajectories. RAMD simulations aren't that. This will attempt to cut "\
+        "the most non-equilibrium situations where there is drift between "\
+        "starting and ending locations.", action="store_true")
     
     args = argparser.parse_args()
     args = vars(args)
@@ -187,12 +223,15 @@ if __name__ == "__main__":
     num_error_samples = args["num_error_samples"]
     stride_error_samples = args["stride_error_samples"]
     skip_error_samples = args["skip_error_samples"]
+    mode = args["mode"]
+    cut_out_drift = args["cut_out_drift"]
     
     analysis = analyze_log(
         ramdLogFiles, numMilestones, numAngleBins, toy_mode=toyMode, 
         num_error_samples=num_error_samples, 
         stride_error_samples=stride_error_samples, 
-        skip_error_samples=skip_error_samples)
+        skip_error_samples=skip_error_samples, mode=mode, 
+        cut_out_drift=cut_out_drift)
     
     analysis.print_results()
     analysis.create_plots()

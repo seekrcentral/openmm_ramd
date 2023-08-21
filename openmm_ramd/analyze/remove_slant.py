@@ -306,7 +306,7 @@ def average_unslanted_profiles(
 def unslant_transition_matrix_constant_approx(
         milestones, transition_matrix, avg_time_vector, slanting_force, beta):
     num_milestones = len(milestones)
-    unslanted_rate_matrix = np.zeros((num_milestones, num_milestones))
+    unslanted_rate_matrix = np.zeros((num_milestones, num_milestones), dtype=np.longdouble)
     unslanted_transition_matrix = np.zeros((num_milestones, num_milestones))
     unslanted_avg_time_vector = np.zeros((num_milestones, 1))
     
@@ -347,10 +347,10 @@ def unslant_transition_matrix_constant_approx(
             new_f_c = f_c * factor_c
             new_p_c = 1.0 / (1.0 + new_f_c)
         
-        unslanted_transition_matrix[i-1,i] = new_p_a / (new_p_a + new_p_c)
-        unslanted_transition_matrix[i+1,i] = new_p_c / (new_p_a + new_p_c)
-        
-        unslanted_avg_time_vector[i, 0] = avg_time_vector[i, 0]
+        if new_p_a + new_p_c > 0.0:
+            unslanted_transition_matrix[i-1,i] = new_p_a / (new_p_a + new_p_c)
+            unslanted_transition_matrix[i+1,i] = new_p_c / (new_p_a + new_p_c)
+            unslanted_avg_time_vector[i, 0] = avg_time_vector[i, 0]
     
     for i in range(num_milestones):
         for j in range(num_milestones):

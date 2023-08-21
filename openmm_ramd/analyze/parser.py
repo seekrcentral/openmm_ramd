@@ -268,25 +268,3 @@ def condense_trajectories(trajectories, onlyZ=False):
         one_dim_trajs.append(one_dim_traj)
         
     return one_dim_trajs
-
-""" # TODO: marked for removal
-def make_xi_escape_rates(xi_bins, maxDist):
-    xi_escape_counts = np.zeros(len(xi_bins))
-    xi_escape_blocks = np.zeros(len(xi_bins))
-    xi_escape_block_rates = np.zeros(len(xi_bins))
-    
-    for i, xi_bin_trajs in enumerate(xi_bins):
-        for j, traj in enumerate(xi_bin_trajs):
-            lastframe = traj[-1]
-            cv_value = lastframe[0]
-            if cv_value >= maxDist:
-                # Escape event
-                xi_escape_counts[i] += 1
-                
-            traj_time = len(traj)
-            xi_escape_blocks[i] += traj_time
-    
-    for i, xi_bin_trajs in enumerate(xi_bins):
-        xi_escape_block_rates[i] = xi_escape_counts[i] / xi_escape_blocks[i]
-    return xi_escape_counts, xi_escape_blocks, xi_escape_block_rates
-"""
