@@ -42,8 +42,7 @@ def test_make_milestoning_model_simple():
     ]
     
     count_matrix, time_vector, time_vector_up, time_vector_down, \
-        transition_matrix, avg_time_vector, avg_time_vector_up, \
-        avg_time_vector_down, rate_matrix \
+        avg_time_vector, avg_time_vector_up, avg_time_vector_down, \
             = milestoning.make_milestoning_model(
             xi_bin_trajs, milestones, frame_time, num_milestones)
     true_count_matrix = np.array(
@@ -52,7 +51,7 @@ def test_make_milestoning_model_simple():
          [0, 1, 0]])
     assert np.isclose(count_matrix, true_count_matrix).all()
     true_time_vector = np.array([
-        [550.0],
+        [450.0],
         [550.0],
         [100.0]])
     #true_time_vector = np.array([
@@ -61,11 +60,11 @@ def test_make_milestoning_model_simple():
     #    [0.0]])
     assert np.isclose(time_vector, true_time_vector).all()
     assert np.isclose(time_vector_up + time_vector_down, true_time_vector).all()
-    true_transition_matrix = np.array(
-        [[0, 0.75, 0],
-         [1.0, 0, 1.0],
-         [0, 0.25, 0]])
-    assert np.isclose(transition_matrix, true_transition_matrix).all()
+    #true_transition_matrix = np.array(
+    #    [[0, 0.75, 0],
+    #     [1.0, 0, 1.0],
+    #     [0, 0.25, 0]])
+    #assert np.isclose(transition_matrix, true_transition_matrix).all()
     
     # TODO: make more tests for avg_time_vector_up/down
     
@@ -74,84 +73,6 @@ def test_make_milestoning_model_simple():
          [ 3.0/550.0,-4.0/550.0, 1.0/100.0],
          [ 0,         1.0/550.0,-1.0/100.0]])
     #assert np.isclose(rate_matrix, true_rate_matrix).all()
-    return
-
-def test_compute_residence_time_linear():
-    num_milestones = 11
-    start_milestone = 0
-    h = 1.0
-    D = 1.0
-    t = h**2/(2.0*D)
-    transition_matrix = np.zeros((num_milestones, num_milestones))
-    time_vector = np.zeros((num_milestones, 1))
-    transition_matrix[1, 0] = 1.0
-    transition_matrix[num_milestones-2, num_milestones-1] = 1.0
-    for i in range(1, num_milestones-1):
-        transition_matrix[i-1, i] = 0.5
-        transition_matrix[i+1, i] = 0.5
-    
-    for i in range(num_milestones):
-        time_vector[i, 0] = t
-
-    residence_time = milestoning.compute_residence_time(
-        transition_matrix, time_vector, num_milestones, start_milestone)
-    
-    assert np.isclose(residence_time, 50.0)
-    return
-
-def test_make_time_profiles_linear():
-    num_milestones = 11
-    h = 1.0
-    D = 1.0
-    t = h**2/(2.0*D)
-    transition_matrix = np.zeros((num_milestones, num_milestones))
-    time_vector = np.zeros((num_milestones, 1))
-    time_vector_up = np.zeros((num_milestones, 1))
-    time_vector_down = np.zeros((num_milestones, 1))
-    transition_matrix[1, 0] = 1.0
-    transition_matrix[num_milestones-2, num_milestones-1] = 1.0
-    for i in range(1, num_milestones-1):
-        transition_matrix[i-1, i] = 0.5
-        transition_matrix[i+1, i] = 0.5
-    
-    for i in range(num_milestones):
-        time_vector[i, 0] = t
-        time_vector_up[i, 0] = t
-        time_vector_down[i, 0] = t
-        
-    transit_time_matrix = milestoning.make_time_profiles(
-        transition_matrix, time_vector, time_vector_up, time_vector_down, 
-        num_milestones)
-    
-    reference_matrix = np.zeros((num_milestones, num_milestones))
-    for i in range(num_milestones):
-        for j in range(num_milestones):
-            dist = h*(i-j)
-            reference_matrix[i,j] = dist**2 / (2.0*D)
-            
-    assert np.isclose(transit_time_matrix, reference_matrix).all()
-    
-def test_make_time_profiles_slant():
-    num_milestones = 11
-    h = 1.0
-    D = 1.0
-    A = -0.1
-    base_count = 100
-    transition_matrix, time_vector, time_vector_up, time_vector_down, \
-        rate_matrix, count_matrix = utils.slant_milestoning_model(
-            num_milestones, A, h, D, base_count)
-    
-    transit_time_matrix = milestoning.make_time_profiles(
-        transition_matrix, time_vector, time_vector_up, time_vector_down, 
-        num_milestones)
-    
-    reference_matrix = np.zeros((num_milestones, num_milestones))
-    for i in range(num_milestones):
-        for j in range(num_milestones):
-            dist = h*(i-j)
-            reference_matrix[i,j] = utils.slant_time(0.0, dist, D, 1.0, A)
-    
-    assert np.isclose(transit_time_matrix, reference_matrix).all()
     return
 
 def test_compute_stationary_probabilities_linear():
@@ -172,7 +93,7 @@ def test_compute_stationary_probabilities_linear():
         time_vector[i, 0] = t
     
     stationary_probs = milestoning.compute_stationary_probabilities(
-        transition_matrix, time_vector, num_milestones)
+        transition_matrix, time_vector, num_milestones, start_index=0)
     return
     
 def test_compute_diffusion_coefficients():

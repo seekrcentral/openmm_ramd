@@ -91,41 +91,7 @@ class Xi_bin():
         data_sample.Q = unslanted_rate_matrix
         return data_sample
     
-    def unslant_data_samples_mode_1(
-            self, starting_index, forceRAMD_in_nm_unitless, beta):
-        slanting_force = -self.midpoint * forceRAMD_in_nm_unitless
-        unslanted_energy_profile = remove_slant.remove_slant(
-            self.milestones, self.main_data_sample.free_energy_profile, -slanting_force, 
-            ref_milestone_index=starting_index)
-        unslanted_rate_matrix, unslanted_transition_matrix, \
-            unslanted_avg_time_vector \
-            = remove_slant.milestoning_statistics_from_profiles(
-                self.milestones, unslanted_energy_profile, 
-                self.main_data_sample.diffusion_profile, beta)
-        new_data_sample = self.assign_unslanted_data(
-            unslanted_avg_time_vector, unslanted_transition_matrix, 
-            unslanted_rate_matrix)
-        self.main_data_sample_unslanted = new_data_sample
-        
-        if self.num_error_samples > 0:
-            for i, data_sample in enumerate(self.data_samples):
-                self.make_profiles(starting_index, wrap_sink=False, 
-                                     unitless_beta=beta, data_sample=data_sample)
-                unslanted_energy_profile = remove_slant.remove_slant(
-                    self.milestones, data_sample.free_energy_profile, -slanting_force, 
-                    ref_milestone_index=starting_index)
-                unslanted_rate_matrix, unslanted_transition_matrix, \
-                unslanted_avg_time_vector \
-                    = remove_slant.milestoning_statistics_from_profiles(
-                        self.milestones, unslanted_energy_profile, 
-                        data_sample.diffusion_profile, beta)
-                new_data_sample = self.assign_unslanted_data(
-                    unslanted_avg_time_vector, unslanted_transition_matrix, 
-                    unslanted_rate_matrix)
-                self.data_samples_unslanted.append(new_data_sample)
-        return
-    
-    def unslant_data_samples_mode_2(self, forceRAMD_in_nm_unitless, beta):
+    def unslant_data_samples(self, forceRAMD_in_nm_unitless, beta):
         slanting_force = -self.midpoint * forceRAMD_in_nm_unitless
         unslanted_rate_matrix, unslanted_transition_matrix, \
             unslanted_avg_time_vector \
@@ -151,7 +117,6 @@ class Xi_bin():
         
         return
     
-    # For debug purposes
     def make_profiles(self, starting_index, wrap_sink, unitless_beta,
                               data_sample=None):
         h = self.milestones[1] - self.milestones[0]
@@ -165,20 +130,6 @@ class Xi_bin():
         data_sample.diffusion_profile = milestoning.compute_diffusion_coefficients(
             data_sample.Q, self.num_milestones, h)
     
-    # For debug purposes
-    #def make_profiles_unslanted(self, starting_index, wrap_sink, unitless_beta,
-    #                            data_sample=None):
-    #    h = self.milestones[1] - self.milestones[0]
-    #    if data_sample is None:
-    #        data_sample = self.main_data_sample_unslanted
-    #    data_sample.p_i = milestoning.compute_stationary_probabilities(
-    #        data_sample.K, data_sample.t, 
-    #        self.num_milestones, starting_index, wrap_sink=wrap_sink)
-    #    self.free_energy_profile_unslanted = remove_slant.make_energy_profile(
-    #        self.p_i_unslanted, unitless_beta, starting_index)
-    #    self.diffusion_profile_unslanted = milestoning.compute_diffusion_coefficients(
-    #        data_sample.Q, self.num_milestones, h)
-
 class Analysis:
     """
     

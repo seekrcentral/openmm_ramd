@@ -162,7 +162,6 @@ def parse_ramd_log_file(ramd_log_filename):
                 continue
             
             change_accel_search = re.match("RAMD: (\d+)    >>> CHANGE ACCELERATION DIRECTION TO: *\[ *([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) *\]", line)
-            #change_accel_search = re.search("CHANGE", line)
             if change_accel_search:
                 accel_step = int(change_accel_search.group(1))
                 accel_COM_x = float(change_accel_search.group(2))

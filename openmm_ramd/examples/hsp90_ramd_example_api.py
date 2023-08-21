@@ -78,19 +78,6 @@ RAMD_cutoff_distance = 0.0025 * unit.nanometer
 
 RAMD_max_distance = 1.5 * unit.nanometer
 
-#starting_ligand_site_distance = get_site_ligand_distance(
-#    input_pdb_file, rec_indices, lig_indices)
-#print("Starting ligand-site distance:", starting_ligand_site_distance)
-
-# Modify target_distance if you want the ligand to be pulled to a different
-# distance. For example:
-# target_distance = 0.6 * unit.nanometers
-#target_distance = starting_ligand_site_distance
-
-########################################################
-# DO NOT MODIFY BELOW UNLESS YOU KNOW WHAT YOU'RE DOING
-########################################################
-
 prmtop = app.AmberPrmtopFile(prmtop_filename)
 mypdb = app.PDBFile(input_pdb_file)
 pdb_parmed = parmed.load_file(input_pdb_file)
@@ -111,7 +98,6 @@ integrator = mm.LangevinIntegrator(temperature, 1/unit.picosecond, time_step)
 platform = mm.Platform.getPlatformByName('CUDA')
 properties = {"CudaDeviceIndex": cuda_index, "CudaPrecision": "mixed"}
 
-#simulation = app.Simulation(prmtop.topology, system, integrator, platform, properties)
 simulation = openmm_ramd.RAMDSimulation(
     prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
     rec_indices, platform, properties)
@@ -158,6 +144,3 @@ total_time_in_days = total_time / (86400.0)
 ns_per_day = simulation_in_ns / total_time_in_days
 print("RAMD benchmark:", ns_per_day, "ns/day")
 
-#end_distance = get_site_ligand_distance(output_pdb_file, rec_indices, 
-#                                                         lig_indices)
-#print("Final ligand-site distance:", end_distance)

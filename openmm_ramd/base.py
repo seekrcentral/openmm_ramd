@@ -12,6 +12,32 @@ except ImportError:
     
 kcal_per_mole_per_angstrom = unit.kilocalories_per_mole / unit.angstrom
 
+def get_ligand_mass(system, group1):
+    """
+    Compute the mass of a group of atoms given an OpenMM system
+    and the indices of the atoms of interest.
+    
+    Parameters:
+    -----------
+    system : System()
+        The OpenMM System object which contains the atomic masses.
+        
+    group1 : list
+        A list of integers representing atom indices of the group
+        the center of mass is being computed for.
+        
+    Returns:
+    --------
+    mass : Quantity
+        The mass of the group of atoms
+    """
+    total_mass = 0.0 * unit.daltons
+    for index in group1:
+        atom_mass = system.getParticleMass(index)
+        total_mass += atom_mass
+    
+    return total_mass
+
 def get_ligand_com(system, positions, group1):
     """
     Compute the center of mass of a group of atoms given an OpenMM
