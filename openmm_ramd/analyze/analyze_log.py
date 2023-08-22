@@ -199,4 +199,4 @@ if __name__ == "__main__":
         skip_error_samples=skip_error_samples, cut_out_drift=cut_out_drift)
     
     analysis.print_results()
-    analysis.create_plots()
+    #analysis.create_plots()
