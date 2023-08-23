@@ -60,6 +60,31 @@ def unslant_transition_matrix_constant_approx(
         assert np.isclose(milestones[i+1] - milestones[i],
             milestones[i] - milestones[i-1]), "This method only works for "\
             "equally-spaced milestones - to leave avg. time unmodified."
+        spans = np.zeros(num_milestones)
+        new_ps = np.zeros(num_milestones)
+        for j in range(num_milestones):
+            if i == j:
+                continue
+            span = milestones[j] - milestones[i]
+            p = transition_matrix[j,i]
+            if p == 0.0:
+                new_p = 0.0
+            else:
+                f = (1.0/p) - 1.0
+                factor = np.exp(-beta * slanting_force * span)
+                new_f = f * factor
+                new_p = 1.0 / (1.0 + new_f)
+            
+            new_ps[j] = new_p
+            
+        sum_new_ps = np.sum(new_ps)
+        if sum_new_ps > 0.0:
+            for j in range(num_milestones):
+                unslanted_transition_matrix[j,i] = new_ps[j] / sum_new_ps
+                
+            unslanted_avg_time_vector[i, 0] = avg_time_vector[i, 0]
+        
+        """
         span = milestones[i+1] - milestones[i-1]
         
         p_a = np.sum(transition_matrix[:i,i])
@@ -86,6 +111,8 @@ def unslant_transition_matrix_constant_approx(
             unslanted_transition_matrix[i-1,i] = new_p_a / (new_p_a + new_p_c)
             unslanted_transition_matrix[i+1,i] = new_p_c / (new_p_a + new_p_c)
             unslanted_avg_time_vector[i, 0] = avg_time_vector[i, 0]
+            
+        """
     
     for i in range(num_milestones):
         for j in range(num_milestones):

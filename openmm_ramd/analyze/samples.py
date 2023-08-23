@@ -231,7 +231,6 @@ class Analysis:
         return
     
     def make_profiles(self, starting_index, wrap_sink, unitless_beta):
-        np.savetxt("/home/lvotapka/tmp/N_ij.txt", self.main_data_sample.N_ij)
         self.p_i = milestoning.compute_stationary_probabilities(
             self.main_data_sample.K, self.main_data_sample.t, 
             self.num_milestones, starting_index, wrap_sink=wrap_sink)
