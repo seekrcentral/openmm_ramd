@@ -84,7 +84,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     bulk_milestone = num_milestones - 1
     if verbose:
         np.set_printoptions(precision=3)
-        print("milestones:", np.array(milestones), "h:", f"{h:.3f}")
+        print("milestones:", np.array(milestones), "h:", f"{h:.3f} (A)")
         print("starting_index:", starting_index)
         
     xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones)
@@ -124,7 +124,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
                 num_error_samples, stride_error_samples, skip_error_samples)
         xi_bin.make_profiles(starting_index, wrap_sink=False, 
                                      unitless_beta=unitless_beta)
-        xi_bin.unslant_data_samples(forceRAMD_in_nm_unitless, beta)
+        xi_bin.unslant_data_samples(forceRAMD, beta)
         xi_bin.counts = milestoning.compute_counts(count_matrix, num_milestones)
         xi_bin.make_profiles(starting_index, wrap_sink=False, 
                              unitless_beta=unitless_beta, 
