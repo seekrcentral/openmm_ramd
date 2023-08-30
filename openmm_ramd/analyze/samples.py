@@ -285,7 +285,6 @@ class Analysis:
             self.main_data_sample.Q[j, j] = -sum(self.main_data_sample.Q[:,j])
         
         
-        np.savetxt("/home/lvotapka/tmp/Q.txt", self.main_data_sample.Q)
         time_estimate = compute_time(self.main_data_sample.Q, starting_index, 
                                      bulk_milestone)
         if self.num_error_samples > 0:
