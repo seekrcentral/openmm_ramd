@@ -177,7 +177,6 @@ def make_rate_matrix(num_milestones, transition_matrix, avg_time_vector):
 def compute_stationary_probabilities(transition_matrix, avg_time_vector, 
                                      num_milestones, start_index, 
                                      wrap_sink=True):
-    np.savetxt("/home/lvotapka/tmp/K_no_sink.txt", transition_matrix)
     
     TINY_PROB = 1e-6
     initial_prob_vector = np.zeros((1, num_milestones))
@@ -205,13 +204,10 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
             transition_matrix_with_leak[i, i] += TINY_PROB
             transition_matrix_with_leak[i-1, i] -= 0.5*TINY_PROB
             transition_matrix_with_leak[i+1, i] -= 0.5*TINY_PROB
-    
-    np.savetxt("/home/lvotapka/tmp/K_sink.txt", transition_matrix_with_leak)
-    
+        
     q_i = initial_prob_vector @ np.linalg.matrix_power(
         transition_matrix_with_leak.T, MATRIX_EXPONENTIAL)
     q_i = q_i / np.sum(q_i)
-    np.savetxt("/home/lvotapka/tmp/q_i.txt", q_i)
     p_i = np.zeros(num_milestones)
     for i in range(num_milestones):
         #if i == 0 or i == num_milestones - 1:
@@ -227,7 +223,6 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
     sum_p_i = np.sum(p_i)
     for i in range(num_milestones):
         p_i[i] /= sum_p_i
-    np.savetxt("/home/lvotapka/tmp/p_i.txt", p_i)
     return p_i
 
 def compute_diffusion_coefficients(rate_matrix, num_milestones, milestone_spacing):
