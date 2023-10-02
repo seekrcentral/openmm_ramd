@@ -83,36 +83,6 @@ def unslant_transition_matrix_constant_approx(
                 unslanted_transition_matrix[j,i] = new_ps[j] / sum_new_ps
                 
             unslanted_avg_time_vector[i, 0] = avg_time_vector[i, 0]
-        
-        """
-        span = milestones[i+1] - milestones[i-1]
-        
-        p_a = np.sum(transition_matrix[:i,i])
-        if p_a == 0.0:
-            new_p_a = 0.0
-            
-        else:
-            f_a = (1.0/p_a) - 1.0
-            factor_a = np.exp(0.5 * beta * slanting_force * span)
-            new_f_a = f_a * factor_a
-            new_p_a = 1.0 / (1.0 + new_f_a)
-        
-        p_c = np.sum(transition_matrix[i+1:,i])
-        if p_c == 0.0:
-            new_p_c = 0.0
-            
-        else:
-            f_c = (1.0/p_c) - 1.0
-            factor_c = np.exp(0.5 * beta * slanting_force * -span)
-            new_f_c = f_c * factor_c
-            new_p_c = 1.0 / (1.0 + new_f_c)
-        
-        if new_p_a + new_p_c > 0.0:
-            unslanted_transition_matrix[i-1,i] = new_p_a / (new_p_a + new_p_c)
-            unslanted_transition_matrix[i+1,i] = new_p_c / (new_p_a + new_p_c)
-            unslanted_avg_time_vector[i, 0] = avg_time_vector[i, 0]
-            
-        """
     
     for i in range(num_milestones):
         for j in range(num_milestones):
