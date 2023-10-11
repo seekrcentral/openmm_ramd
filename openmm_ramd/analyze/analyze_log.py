@@ -20,7 +20,7 @@ import openmm_ramd.analyze.milestoning as milestoning
 def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5, 
                 verbose=True, toy_mode=False, num_error_samples=0, 
                 stride_error_samples=None, skip_error_samples=None, 
-                cut_out_drift=False):
+                cut_out_drift=False, mode=1):
     if verbose:
         print(f"Using {num_milestones} milestones.")
         print(f"Using {num_xi_bins} angle bins.")
@@ -87,7 +87,8 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
         print("milestones:", np.array(milestones), "h:", f"{h:.3f} (A)")
         print("starting_index:", starting_index)
         
-    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones)
+    xi_bins = samples.make_xi_bins(
+        num_xi_bins, num_milestones, milestones, mode)
     for i, trajectory in enumerate(one_dim_trajs):
         traj_xi = trajectory[0][1]
         found_bin = False
@@ -117,6 +118,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
             = milestoning.make_milestoning_model(
                 xi_bin.trajs, milestones, frame_time, num_milestones,
                 remove_unbalanced_frame_counts=cut_out_drift)
+        
         xi_bin.assign_main_data_sample(
             count_matrix, time_vector, avg_time_vector)
         if num_error_samples > 0:
@@ -136,8 +138,6 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
                            unitless_beta=unitless_beta)
     analysis.make_times(starting_index, bulk_milestone)
     return analysis
-
-
 
 # TODO: add Torque balancing in the RAMD.
 if __name__ == "__main__":
@@ -180,6 +180,12 @@ if __name__ == "__main__":
         "trajectories. RAMD simulations aren't that. This will attempt to cut "\
         "the most non-equilibrium situations where there is drift between "\
         "starting and ending locations.", action="store_true")
+    argparser.add_argument(
+        "-m", "--mode", dest="mode", 
+        default=1, type=int, help="The mode to use when unslanting. Mode = 1 "\
+        "indicates that unslanting will be performed using a linear "\
+        "approximation between milestones. Mode = 2 indicates that an entire "\
+        "free energy profile will be constructed for unslanting. Default: 1")
     
     args = argparser.parse_args()
     args = vars(args)
@@ -191,12 +197,14 @@ if __name__ == "__main__":
     stride_error_samples = args["stride_error_samples"]
     skip_error_samples = args["skip_error_samples"]
     cut_out_drift = args["cut_out_drift"]
+    mode = args["mode"]
     
     analysis = analyze_log(
         ramd_log_files, num_milestones, num_angle_bins, toy_mode=toy_mode, 
         num_error_samples=num_error_samples, 
         stride_error_samples=stride_error_samples, 
-        skip_error_samples=skip_error_samples, cut_out_drift=cut_out_drift)
+        skip_error_samples=skip_error_samples, cut_out_drift=cut_out_drift, 
+        mode=mode)
     
     analysis.print_results()
     #analysis.create_plots()

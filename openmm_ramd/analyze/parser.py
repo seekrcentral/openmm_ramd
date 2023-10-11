@@ -65,6 +65,7 @@ def parse_ramd_log_file(ramd_log_filename):
     receptor_step = None
     accel_step = None
     num_simulations = 0
+        
     with open(ramd_log_filename, "r") as f:
         for i, line in enumerate(f.readlines()):
             new_trajectory_frame = False
@@ -243,6 +244,10 @@ def condense_trajectories(trajectories, onlyZ=False):
                 assert start_accx == start_accx, \
                     "Every frame must have the same acceleration vector"
             
+        if total_points == 0:
+            #one_dim_trajs.append([])
+            continue
+        
         avg_ligx = sum_ligx / total_points
         avg_ligy = sum_ligy / total_points
         avg_ligz = sum_ligz / total_points

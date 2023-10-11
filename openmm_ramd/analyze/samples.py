@@ -37,7 +37,7 @@ class Xi_bin():
     
     """
     def __init__(self, num_milestones, milestones, lowest_boundary, midpoint, 
-                 highest_boundary):
+                 highest_boundary, mode=1):
         self.num_milestones = num_milestones
         self.milestones = milestones
         self.lowest_boundary = lowest_boundary
@@ -50,14 +50,7 @@ class Xi_bin():
         self.data_samples_unslanted = []
         self.counts = None
         self.num_error_samples = 0
-        
-        # DEBUG
-        #self.p_i_slanted = None
-        #self.free_energy_profile_slanted = None
-        #self.diffusion_profile_slanted = None
-        #self.p_i_unslanted = None
-        #self.free_energy_profile_unslanted = None
-        #self.diffusion_profile_unslanted = None
+        self.mode = mode
         return
     
     def assign_main_data_sample(self, count_matrix, time_vector, 
@@ -93,26 +86,59 @@ class Xi_bin():
     
     def unslant_data_samples(self, forceRAMD_in_nm_unitless, beta):
         slanting_force = -self.midpoint * forceRAMD_in_nm_unitless
-        unslanted_rate_matrix, unslanted_transition_matrix, \
-            unslanted_avg_time_vector \
-                = remove_slant.unslant_transition_matrix_constant_approx(
-                self.milestones, self.main_data_sample.K, 
-                self.main_data_sample.t, slanting_force, beta)
+        if self.mode == 1:
+            unslanted_rate_matrix, unslanted_transition_matrix, \
+                unslanted_avg_time_vector \
+                    = remove_slant.unslant_transition_matrix_constant_approx(
+                    self.milestones, self.main_data_sample.K, 
+                    self.main_data_sample.t, slanting_force, beta)
+            unslanted_energy_profile = np.zeros(self.num_milestones)
+                    
+        elif self.mode == 2:
+            #print("data_sample.Q")
+            #print(self.main_data_sample.Q)
+            #print("data_sample.K")
+            #print(self.main_data_sample.K)
+            #print("self.main_data_sample.t")
+            #print(self.main_data_sample.t)
+                    
+            unslanted_rate_matrix, unslanted_transition_matrix, \
+                unslanted_avg_time_vector, unslanted_energy_profile \
+                    = remove_slant.unslant_transition_matrix_from_energy_profile(
+                    self.milestones, self.main_data_sample.free_energy_profile, 
+                    self.main_data_sample.diffusion_profile, slanting_force, 
+                    beta)
+        
+        else:
+            raise Exception(f"Mode option not allowed: {self.mode}")
+        
         new_data_sample = self.assign_unslanted_data(
             unslanted_avg_time_vector, unslanted_transition_matrix, 
             unslanted_rate_matrix)
+        new_data_sample.free_energy_profile = unslanted_energy_profile
         self.main_data_sample_unslanted = new_data_sample
         
         if self.num_error_samples > 0:
             for i, data_sample in enumerate(self.data_samples):
-                unslanted_rate_matrix, unslanted_transition_matrix, \
-                    unslanted_avg_time_vector \
-                    = remove_slant.unslant_transition_matrix_constant_approx(
-                        self.milestones, data_sample.K, data_sample.t, 
-                        slanting_force, beta)
+                if self.mode == 1:
+                    unslanted_rate_matrix, unslanted_transition_matrix, \
+                        unslanted_avg_time_vector \
+                        = remove_slant.unslant_transition_matrix_constant_approx(
+                            self.milestones, data_sample.K, data_sample.t, 
+                            slanting_force, beta)
+                    unslanted_energy_profile = np.zeros(self.num_milestones)
+                        
+                elif self.mode == 2:
+                    unslanted_rate_matrix, unslanted_transition_matrix, \
+                        unslanted_avg_time_vector, unslanted_energy_profile \
+                            = remove_slant.unslant_transition_matrix_from_energy_profile(
+                            self.milestones, data_sample.free_energy_profile, 
+                            data_sample.diffusion_profile, slanting_force, beta)
+                    
                 new_data_sample = self.assign_unslanted_data(
                     unslanted_avg_time_vector, unslanted_transition_matrix, 
                     unslanted_rate_matrix)
+                new_data_sample.free_energy_profile = unslanted_energy_profile
                 self.data_samples_unslanted.append(new_data_sample)
         
         return
@@ -334,23 +360,25 @@ class Analysis:
                        np.round(self.milestones[:-1], 3), rotation=75)
         ax1.set_ylabel("\u0394G(z) (kcal/mol)", color="r")
         ax1.set_xlabel("z(nm)")
-        ax2 = ax1.twinx()
-        ax2.set_ylabel("D(z) ($nm^2/s$)", color="b")
-        ax2.errorbar(np.round(self.milestones[:-2], 3), self.diffusion_profile[:-2], 
-                     yerr=self.diffusion_profile_err[:-2], color="b", ecolor="b", 
-                     capsize=2)
+        
+        #ax2 = ax1.twinx()
+        #ax2.set_ylabel("D(z) ($nm^2/s$)", color="b")
+        #ax2.errorbar(np.round(self.milestones[:-2], 3), self.diffusion_profile[:-2], 
+        #             yerr=self.diffusion_profile_err[:-2], color="b", ecolor="b", 
+        #             capsize=2)
+        #ax2.set_ylim(0.0, 1.2*np.max(self.diffusion_profile))
         plt.tight_layout()
         #pi_fig.savefig(os.path.join(image_directory, "profile.png"))
         plt.show()
         
-def make_xi_bins(num_xi_bins, num_milestones, milestones):
+def make_xi_bins(num_xi_bins, num_milestones, milestones, mode):
     xi_bins = []
     xi_bins_ranges = np.linspace(-1.0, 1.0, num_xi_bins+1)
     for j in range(num_xi_bins):
         midpoint = 0.5 * (xi_bins_ranges[j] + xi_bins_ranges[j+1])
         #xi_values.append(xi_value)
         xi_bin = Xi_bin(num_milestones, milestones, xi_bins_ranges[j], midpoint, 
-                        xi_bins_ranges[j+1])
+                        xi_bins_ranges[j+1], mode)
         xi_bins.append(xi_bin)
         
     return xi_bins
@@ -367,17 +395,21 @@ def compute_time(rate_matrix, starting_index, bulk_milestone):
 
 def correct_rate_matrix_for_ramd(rate_matrix_avg):
     end_rate = rate_matrix_avg[-3, -2]
+    """
     rate_matrix_avg[-1, -2] = 0.5 * end_rate
     rate_matrix_avg[-3, -2] = 0.5 * end_rate
     rate_matrix_avg[-2, -2] = -end_rate
     rate_matrix_avg[-2, -1] = 0.5 * end_rate
     rate_matrix_avg[-1, -1] = -0.5 * end_rate
+    """
     return
 
 def correct_transition_matrix_for_ramd(transition_matrix_avg):
+    """
     transition_matrix_avg[-1, -2] = 0.5
     transition_matrix_avg[-3, -2] = 0.5
     transition_matrix_avg[-2, -1] = 1.0
+    """
     return
 
 def correct_avg_time_vector_for_ramd(avg_time_vector_avg):

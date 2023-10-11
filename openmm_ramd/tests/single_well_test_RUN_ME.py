@@ -17,7 +17,9 @@ import openmm_ramd.analyze.analyze_log as analyze_log
 
 AVOGADROS_NUMBER = 6.022e23
 kT_in_J = 300.0 * 1.380649e-23 # J
-kT = kT_in_J * AVOGADROS_NUMBER / 1000 # in kJ / mol
+kT_in_cal = kT_in_J / 4.184
+#kT = kT_in_J * AVOGADROS_NUMBER / 1000 # in kJ / mol
+kT = kT_in_cal * AVOGADROS_NUMBER / 1000 # in kcal / mol
 beta = 1.0/(kT)
 #print("beta:", beta, "mol/kJ")
 
@@ -36,10 +38,10 @@ num_milestones = 21
 num_xi_bins = 10
 start_milestone_index = num_milestones // 10
 
-WELL_DEPTH = 7.5 * 4.184
-force_magnitude = 5.0
+WELL_DEPTH = 5.0 # * 4.184
+force_magnitude = 5.0 #5.0
 
-MODE = 2
+MODE = 1
 
 def potential_energy_flat(z, force_constant, start=0.0, u=None):
     """
@@ -195,55 +197,6 @@ def compute_time(z_s, beta, potential_energy, diffusion_coefficient, h_z, start=
     time = time1 + time2
     return time, stationary_dist, inv_stat_dist, time_integral_span_outer
 
-def get_smoluchowski_flux(z_s, energy_span, diffusion_span, beta, forward):
-    num_integration_points = len(z_s)
-    h = (z_s[-1] - z_s[0]) / (num_integration_points - 1)
-    
-    inv_stat_dist = np.zeros(num_integration_points)
-    for j in range(num_integration_points):
-        assert diffusion_span[j] > 0.0, "Diffusion must be positive. "\
-            f"diffusion_span[{j}] = {diffusion_span[j]}"
-        inv_stat_dist[j] = np.exp(beta*energy_span[j])/diffusion_span[j]
-    
-    time_integral_span_outer = np.zeros(num_integration_points)
-    for j in range(num_integration_points):
-        time_integral_span_outer[j] = inv_stat_dist[j]
-    
-    inv_flux = sp_int.simps(time_integral_span_outer, dx=h)
-    return 1.0 / inv_flux
-    
-def get_smoluchowski_u(z_s, energy_span, diffusion_span, beta, forward):
-    num_integration_points = len(z_s)
-    h = (z_s[-1] - z_s[0]) / (num_integration_points - 1)
-    factor = get_smoluchowski_flux(z_s, energy_span, diffusion_span, beta, forward)
-    stationary_dist = np.zeros(num_integration_points)
-    inv_stat_dist = np.zeros(num_integration_points)
-    for j in range(num_integration_points):
-        stationary_dist[j] = np.exp(-beta*energy_span[j])
-        inv_stat_dist[j] = np.exp(beta*energy_span[j])/diffusion_span[j]
-    
-    time_integral_span_outer = np.zeros(num_integration_points)
-    for j in range(num_integration_points):
-        if forward:
-            time_integral_span_inner = np.zeros(num_integration_points-j)
-            
-            for k in range(j, num_integration_points):
-                index2 = k - j
-                time_integral_span_inner[index2] = inv_stat_dist[k]
-            
-            time_integral_span_outer[j] = stationary_dist[j] \
-                * sp_int.simps(time_integral_span_inner, dx=h)
-        else:
-            time_integral_span_inner = np.zeros(j+1)
-            for k in range(j+1):
-                time_integral_span_inner[k] = inv_stat_dist[k]
-            
-            time_integral_span_outer[j] = stationary_dist[j] \
-                * sp_int.simps(time_integral_span_inner, dx=h)
-    
-    int_u = factor * sp_int.simps(time_integral_span_outer, dx=h)
-    return int_u
-
 def milestoning_statistics_from_profiles(
         milestones, z_s, energy_profile, diffusion_profile, beta):
     base_count = 1000
@@ -270,60 +223,41 @@ def milestoning_statistics_from_profiles(
         total_flux = 0.0
         total_u = 0.0
         
-        
-        
         i_z = i*z_points_per_milestone
         #b = z_s[i_z]
         if doing_a:
             i_z_minus = (i-1)*z_points_per_milestone
-            #a = z_s[i_z_minus]
             z_s_span = z_s[i_z_minus:i_z+1]
             energy_span = energy_profile[i_z_minus:i_z+1]
             diffusion_span = diffusion_profile[i_z_minus:i_z+1]
-            #time_b_to_a = get_smoluchowski_time_two_points(
-            #    a, b, energy_a, energy_b, diffusion_a, diffusion_b, beta, 
-            #    forward=False)
-            #time_b_to_a = remove_slant.get_smoluchowski_time(
-            #    z_s_span, energy_span, diffusion_span, beta, forward=False)
-            #flux_b_to_a = 1 / time_b_to_a
-            flux_b_to_a = get_smoluchowski_flux(
+            flux_b_to_a = remove_slant.get_smoluchowski_flux(
                 z_s_span, energy_span, diffusion_span, beta, forward=False)
-            u_b_to_a = get_smoluchowski_u(
+            u_b_to_a, u_z1 = remove_slant.get_smoluchowski_u(
                 z_s_span, energy_span, diffusion_span, beta, forward=False)
             total_flux += flux_b_to_a
             total_u += u_b_to_a
             
         else:
-            #time_b_to_a = 0.0
             flux_b_to_a = 0.0
             
         if doing_c:
             i_z_plus = (i+1)*z_points_per_milestone
-            #c = z_s[i_z_plus]
             z_s_span = z_s[i_z:i_z_plus+1]
             energy_span = energy_profile[i_z:i_z_plus+1]
             diffusion_span = diffusion_profile[i_z:i_z_plus+1]
-            #time_b_to_c = get_smoluchowski_time_two_points(
-            #    b, c, energy_b, energy_c, diffusion_b, diffusion_c, beta, 
-            #    forward=True)
-            #time_b_to_c = remove_slant.get_smoluchowski_time(
-            #    z_s_span, energy_span, diffusion_span, beta, forward=True)
-            #flux_b_to_c = 1 / time_b_to_c
-            flux_b_to_c = get_smoluchowski_flux(
+            flux_b_to_c = remove_slant.get_smoluchowski_flux(
                 z_s_span, energy_span, diffusion_span, beta, forward=True)
             
-            u_b_to_c = get_smoluchowski_u(
+            u_b_to_c, u_z2 = remove_slant.get_smoluchowski_u(
                 z_s_span, energy_span, diffusion_span, beta, forward=True)
             total_flux += flux_b_to_c
             total_u += u_b_to_c
             
         else:
-            #time_b_to_c = 0.0
             flux_b_to_c = 0.0
             
         P_b_to_a = flux_b_to_a / total_flux
         P_b_to_c = flux_b_to_c / total_flux
-        #time = P_b_to_a * time_b_to_a + P_b_to_c * time_b_to_c
         time = total_u / total_flux
         
         if doing_a:
@@ -363,12 +297,11 @@ if __name__ == "__main__":
     min_potential_y1, potential_energy1, diffusion_coefficient1 \
         = make_potential_and_diffusion(z_s, 0.0, potential_energy_func, 
                                        diffusion_coefficient_func)
-    #print("min_potential_y1:", min_potential_y1)
-
+    
     time1, stationary_dist1, inv_stat_dist1, time_integral_span_outer1 \
         = compute_time(z_s, beta, potential_energy1, diffusion_coefficient1, 
                        h_z, start=start_z)
-    #print("Expected escape time:", time1, "ps")
+    print("Expected escape time:", time1, "ps")
     
     """
     # PLOT ORIGINAL FUNCTION
@@ -386,12 +319,18 @@ if __name__ == "__main__":
     stationary_dist_normalized = stationary_dist1 / sp_int.simps(
         stationary_dist1, dx=h_z)
     
-    milestones = np.linspace(min_z, max_z, num_milestones)
+    #milestones = np.linspace(min_z, max_z, num_milestones)
+    milestones = 0.1 * np.array(
+        [0.671, 5.401, 10.131, 14.861, 19.591, 24.321, 29.051, 33.781, 38.511, 43.241, 
+         47.971, 52.701, 57.431, 62.161, 66.89,  71.62,  76.35,  81.08,  
+         85.81,  90.54,  95.27 ])
+    
     milestone_h = milestones[1] - milestones[0]
+    
     bulk_milestone = num_milestones - 1
     
     #xi_bins, xi_values, xi_bins_ranges = analyze_log.make_xi_bins(num_xi_bins)
-    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones)
+    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones, MODE)
     
     unslanted_energy_profiles = np.zeros((num_xi_bins, num_milestones))
     diffusion_profiles = np.zeros((num_xi_bins, num_milestones))
@@ -425,82 +364,53 @@ if __name__ == "__main__":
         xi_bin.main_data_sample.Q = milestoning.make_rate_matrix(
             num_milestones, xi_bin.main_data_sample.K, avg_time_vector)
         
-        """
-        if MODE == 1:
-            energy_profile, diffusion_profile, counts \
-                    = remove_slant.recover_profiles(
-                    transition_matrix, avg_time_vector, rate_matrix, count_matrix, 
-                    num_milestones, milestone_h, beta, 
-                    ref_milestone_index=start_milestone_index)
-            
-            unslanted_energy_profile = remove_slant.remove_slant(
-                milestones, energy_profile, -slanting_force, 
-                ref_milestone_index=start_milestone_index)
-            
-            unslanted_rate_matrix, unslanted_transition_matrix, \
-                unslanted_time_vector \
-                = remove_slant.milestoning_statistics_from_profiles(
-                    milestones, unslanted_energy_profile, diffusion_profile, beta)
-        
-        elif MODE == 2:
-            unslanted_rate_matrix, unslanted_transition_matrix, \
-                unslanted_time_vector \
-                    = remove_slant.unslant_transition_matrix_constant_approx(
-                    milestones, transition_matrix, avg_time_vector, slanting_force,
-                    beta)
-            counts = milestoning.compute_counts(count_matrix, num_milestones)
-        
-        for j in range(num_milestones):
-            rate_matrix_sum[:, j] += counts[j] * unslanted_rate_matrix[:, j]
-            transition_matrix_sum[:, j] += counts[j] * unslanted_transition_matrix[:, j]
-            avg_time_vector_sum[j, 0] += counts[j] * unslanted_time_vector[j, 0]
-            counts_sum[j] += counts[j]
-        """
-        #unslanted_energy_profiles[i, :] = unslanted_energy_profile
-        #diffusion_profiles[i, :] = diffusion_profile
-        #counts_profiles[i, :] = counts
-        #xi_bin.unslant_data_samples(force_magnitude, beta)
         xi_bin.make_profiles(start_milestone_index, wrap_sink=False, 
                                      unitless_beta=beta)
+        #xi_bin.main_data_sample.diffusion_profile = np.ones(num_milestones) * D
         xi_bin.unslant_data_samples(force_magnitude, beta)
+        #plt.plot(milestones, xi_bin.main_data_sample.free_energy_profile, label=f"$\\xi$={xi:.2f}")
         xi_bin.counts = milestoning.compute_counts(count_matrix, num_milestones)
-        
-        #recovered_stationary_probs = milestoning.compute_stationary_probabilities(
-        #    unslanted_transition_matrix, unslanted_time_vector, num_milestones)
-        
-        # recovered_energy_profile = remove_slant.make_energy_profile(
-        #     recovered_stationary_probs, beta, start_milestone_index)
-        
         
         xi_bin.make_profiles(start_milestone_index, wrap_sink=False, 
                              unitless_beta=beta, data_sample=xi_bin.main_data_sample_unslanted)
+        
         #plt.plot(milestones, xi_bin.main_data_sample.free_energy_profile, label=f"$\\xi$={xi:.2f}")
         #plt.plot(milestones, xi_bin.main_data_sample_unslanted.free_energy_profile, label=f"$\\xi$={xi:.2f}")
         
-        #stationary_probs_norm = stationary_probs / sp_int.simps(stationary_probs, dx=milestone_h)
         
-        # PLOT SLANTED_PROFILES
-        #plt.plot(milestones, energy_profile, label=f"$\\xi$={xi:.2f}")
-        
-        # PLOT UNSLANTED PROFILES
-        #plt.plot(milestones, unslanted_energy_profile, label=f"$\\xi$={xi:.2f}")
-        
-        # PLOT RECOVERED PROFILES
-        #plt.plot(milestones, recovered_energy_profile, label=f"$\\xi$={xi:.2f}")
+    
+    #plt.ylim((-0, 1.5*WELL_DEPTH))
     
     #plt.plot(z_s, potential_energy1, "g", label="Potential energy $W(z) (kJ/mol)$")
     #plt.plot(milestones, energy_profile, "r", label="Recovered Potential energy $W(z) (kJ/mol)$")
     #plt.plot(z_s, diffusion_coefficient1, "b", label="Diffusion coefficient $D(z) \\frac{nm^2}{ps}$")
     #plt.plot(milestones, diffusion_profile, "k", label="Recovered Diffusion coefficient $D(z) \\frac{nm^2}{ps}$")
-    
+    #plt.ylim((-WELL_DEPTH, 2.0*WELL_DEPTH))
+    #plt.ylim((-0, 2.0))
+    #plt.show()
     
     analysis = samples.Analysis(num_milestones, milestones, h_z)
     analysis.avg_unslanted_xi_bins(xi_bins)
     analysis.make_profiles(start_milestone_index, wrap_sink=False, 
                            unitless_beta=beta)
+    
+    # DEBUG
     analysis.make_times(start_milestone_index, bulk_milestone)
     
     print("original time:", time1, "ps")
     
     analysis.print_results()
     analysis.create_plots()
+    
+    milestones = list(np.round(analysis.milestones[:-1], 3))
+    free_energy_profile = list(analysis.free_energy_profile[:-1])
+    free_energy_profile_err = list(analysis.free_energy_profile_err[:-1])
+    
+    print("milestones:")
+    print(milestones)
+    print("free_energy_profile:")
+    print(free_energy_profile)
+    print("free_energy_profile_err:")
+    print(free_energy_profile_err)
+    
+    print("len(free_energy_profile):", len(free_energy_profile))

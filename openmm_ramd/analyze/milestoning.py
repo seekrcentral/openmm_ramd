@@ -8,7 +8,7 @@ in a sigma-RAMD analysis.
 import numpy as np
 
 MATRIX_EXPONENTIAL = 9999999999
-DEFAULT_DIFFUSION_COEFF = 100.0
+DEFAULT_DIFFUSION_COEFF = 1.0
 
 def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
     """
@@ -27,6 +27,8 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
                 min_location = cv_val
             if cv_val > max_location:
                 max_location = cv_val
+                
+            
     
     assert min_location < max_location, \
         "The minimum must be less than the maximum."
@@ -50,7 +52,7 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
     
 def make_milestoning_model(
         xi_bin_trajs, milestones, frame_time, num_milestones,
-        remove_unbalanced_frame_counts=True):
+        remove_unbalanced_frame_counts=False):
     
     frame_time = float(frame_time)
     count_matrix = np.zeros((num_milestones, num_milestones), dtype=np.int32)
@@ -179,8 +181,9 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
                                      wrap_sink=True):
     
     TINY_PROB = 1e-6
-    initial_prob_vector = np.zeros((1, num_milestones))
-    initial_prob_vector[0,0] = 1.0
+    #initial_prob_vector = np.zeros((1, num_milestones))
+    #initial_prob_vector[0,0] = 1.0
+    initial_prob_vector = np.ones((1, num_milestones))
     
     transition_matrix_with_leak = np.copy(transition_matrix)
     if transition_matrix_with_leak[-2, -1] < TINY_PROB:
@@ -207,11 +210,13 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
         
     q_i = initial_prob_vector @ np.linalg.matrix_power(
         transition_matrix_with_leak.T, MATRIX_EXPONENTIAL)
-    q_i = q_i / np.sum(q_i)
+    if np.sum(q_i) > 0.0:
+        q_i = q_i / np.sum(q_i)
+    
     p_i = np.zeros(num_milestones)
     for i in range(num_milestones):
-        #if i == 0 or i == num_milestones - 1:
-        if i == num_milestones - 1:
+        if i == 0 or i == num_milestones - 1:
+        #if i == num_milestones - 1:
             # This is because at the ends, the reflective boundary conditions
             #  cause the flux to be undercounted by a factor of 2
             flux_factor = 2.0
@@ -221,15 +226,16 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
         p_i[i] = q_i[0, i] * avg_time_vector[i, 0] * flux_factor
     
     sum_p_i = np.sum(p_i)
-    for i in range(num_milestones):
-        p_i[i] /= sum_p_i
+    if sum_p_i > 0.0:
+        for i in range(num_milestones):
+            p_i[i] /= sum_p_i
     return p_i
 
 def compute_diffusion_coefficients(rate_matrix, num_milestones, milestone_spacing):
     diffusion_coeffs = np.zeros(num_milestones)
     for i in range(num_milestones):
         if i == 0:
-            diffusion_coeffs[0] = milestone_spacing**2 \
+            diffusion_coeffs[0] = 0.5 * milestone_spacing**2 \
                 * rate_matrix[1, 0]
 
         elif i == num_milestones - 1:
@@ -248,7 +254,7 @@ def compute_diffusion_coefficients(rate_matrix, num_milestones, milestone_spacin
         
         if diffusion_coeffs[i] == 0.0:
             diffusion_coeffs[i] = DEFAULT_DIFFUSION_COEFF
-                
+    
     return diffusion_coeffs
 
 def compute_counts(count_matrix, num_milestones):
