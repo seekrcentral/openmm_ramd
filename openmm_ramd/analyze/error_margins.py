@@ -162,9 +162,8 @@ def monte_carlo_milestoning_error(
     if verbose: print("collecting", num, "MCMC samples from", 
                       num*(stride) + skip + 1, "total moves")  
     new_data_sample = None
-    for counter in range(num * (stride) + skip + 1):
+    for counter in range(num * stride + skip + 1):
         #if verbose: print("MCMC stepnum: ", counter)
-        
         Qnew = irreversible_stochastic_matrix_algorithm_sample(Q.T, N.T, R)
         if counter > skip and counter % stride == 0:
             new_data_sample = samples.Data_sample()

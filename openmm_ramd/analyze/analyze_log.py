@@ -121,9 +121,6 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
         
         xi_bin.assign_main_data_sample(
             count_matrix, time_vector, avg_time_vector)
-        if num_error_samples > 0:
-            xi_bin.sample_error_matrices(
-                num_error_samples, stride_error_samples, skip_error_samples)
         xi_bin.make_profiles(starting_index, wrap_sink=False, 
                                      unitless_beta=unitless_beta)
         xi_bin.unslant_data_samples(forceRAMD, beta)
@@ -134,6 +131,9 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     
     analysis = samples.Analysis(num_milestones, milestones, h)
     analysis.avg_unslanted_xi_bins(xi_bins)
+    if num_error_samples > 0:
+        analysis.sample_error_matrices(
+            num_error_samples, stride_error_samples, skip_error_samples)
     analysis.make_profiles(starting_index, wrap_sink=False, 
                            unitless_beta=unitless_beta)
     analysis.make_times(starting_index, bulk_milestone)
