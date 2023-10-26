@@ -51,7 +51,7 @@ fill out the prompts.
 With Conda working, install OpenMM:
 
 ```
-conda install -c conda-forge openmm
+conda install -c conda-forge openmm=7.7
 ```
 
 ### Install OpenMM RAMD
@@ -62,22 +62,14 @@ this repository and install the package:
 ```
 git clone https://github.com/seekrcentral/openmm_ramd.git
 cd openmm_ramd
-python setup.py install
+python -m pip install .
 ```
-
-If you get an error stating “No module named ‘Cython’”, this can usually be 
-remedied by installing/updating Cython with:
-
-```
-pip install --upgrade cython
-```
-
 
 ### Testing OpenMM RAMD (Optional)
 To test OpenMM RAMD, run the following command in the openmm_ramd/ directory:
 
 ```
-python setup.py test
+pytest
 ```
 
 ## Run

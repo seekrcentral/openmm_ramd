@@ -7,7 +7,6 @@ time for an unbiased system.
 
 import numpy as np
 import scipy.integrate as sp_int
-import matplotlib.pyplot as plt
 
 HIGH_ENERGY = 500.0
 THRESH_ENERGY = 50.0
@@ -205,10 +204,6 @@ def unslant_transition_matrix_from_energy_profile(
     unslanted_rate_matrix = np.zeros((num_milestones, num_milestones), dtype=np.longdouble)
     unslanted_transition_matrix = np.zeros((num_milestones, num_milestones))
     unslanted_avg_time_vector = np.zeros((num_milestones, 1))
-    
-    #plt.plot(milestones, unslanted_energy_profile)
-    #plt.ylim((0.0, 10.0))
-    #plt.show()
     
     for i, z in enumerate(milestones):
         if i == 0:

@@ -4,7 +4,6 @@ test_remove_slant.py
 
 import numpy as np
 import scipy.integrate as sp_int
-import matplotlib.pyplot as plt
 
 import openmm_ramd.analyze.remove_slant as remove_slant
 
