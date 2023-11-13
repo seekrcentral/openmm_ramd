@@ -38,8 +38,8 @@ num_milestones = 21
 num_xi_bins = 10
 start_milestone_index = num_milestones // 10
 
-WELL_DEPTH = 5.0 # * 4.184
-force_magnitude = 5.0 #5.0
+WELL_DEPTH = 10.0 # * 4.184
+force_magnitude = 2.0 #5.0
 
 MODE = 1
 

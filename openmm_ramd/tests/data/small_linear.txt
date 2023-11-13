@@ -8,8 +8,8 @@ RAMD: openmmVersion            8.0.0.dev-a780005
 RAMD: forceRAMD                0.1
 RAMD: rMinRamd                 1.0
 RAMD: forceOutFreq             50
-RAMD: timeStep                 0.002 ps
-RAMD: temperature              300.0 K
+RAMD: timeStep                 2e-3 ps
+RAMD: temperature              3.0e2 K
 RAMD: protAtoms                None
 RAMD: ligAtoms                 [0]
 RAMD: ramdSeed                 0

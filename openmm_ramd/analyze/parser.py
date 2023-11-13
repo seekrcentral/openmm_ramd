@@ -81,7 +81,7 @@ def parse_ramd_log_file(ramd_log_filename):
                 else:
                     forceOutFreq = forceOutFreq_
                 
-            forceRAMD_search = re.match("RAMD: forceRAMD * (\d+\.\d*)", line)
+            forceRAMD_search = re.match("RAMD: forceRAMD * (\d+\.?\d*[eE]?[+-]?\d*)", line)
             if forceRAMD_search:
                 forceRAMD_ = float(forceRAMD_search.group(1))
                 if forceRAMD is not None:
@@ -100,7 +100,7 @@ def parse_ramd_log_file(ramd_log_filename):
                 else:
                     forceRAMD = forceRAMD_
                 
-            timeStep_search = re.match("RAMD: timeStep * (\d+\.\d*)", line)
+            timeStep_search = re.match("RAMD: timeStep * (\d+\.?\d*[eE]?[+-]?\d*)", line)
             if timeStep_search:
                 timeStep_ = float(timeStep_search.group(1))
                 if timeStep is not None:
@@ -110,7 +110,7 @@ def parse_ramd_log_file(ramd_log_filename):
                 else:
                     timeStep = timeStep_
                     
-            temperature_search = re.match("RAMD: temperature * (\d+\.\d*)", line)
+            temperature_search = re.match("RAMD: temperature * (\d+\.?\d*[eE]?[+-]?\d*)", line)
             if temperature_search:
                 temperature_ = float(temperature_search.group(1))
                 if temperature is not None:
@@ -120,7 +120,7 @@ def parse_ramd_log_file(ramd_log_filename):
                 else:
                     temperature = temperature_
                     
-            maxDist_search = re.match("RAMD: maxDist * (\d+\.\d*)", line)
+            maxDist_search = re.match("RAMD: maxDist * (\d+\.?\d*[eE]?[+-]?\d*)", line)
             if maxDist_search:
                 maxDist_ = float(maxDist_search.group(1))
                 if maxDist is not None:
