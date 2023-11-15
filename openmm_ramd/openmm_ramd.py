@@ -3,6 +3,7 @@ Provide the primary functions.
 """
 
 import numpy as np
+import mdtraj
 try:
     import openmm
 except ImportError:
@@ -45,7 +46,7 @@ class RAMDSimulation(openmm_app.Simulation):
                  force_out_freq=50, md_steps=0, md_start="no", r_min_md=0, 
                  max_dist=50, debug_level=0, platform=None, 
                  properties=None, log_file_name=None, ramd_force_group=1,
-                 ramd_seed=0):
+                 ramd_seed=0, align_receptor=False):
         self.log_file_name = log_file_name
         self.logger = None
         if log_file_name is not None:
@@ -70,6 +71,14 @@ class RAMDSimulation(openmm_app.Simulation):
         self.debug_level = debug_level
         if ramd_seed > 0:
             integrator.setRandomNumberSeed(ramd_seed)
+        self.mdtraj_topology = mdtraj.Topology.from_openmm(topology)
+        self.mdtraj_trajectory = None
+        self.mdtraj_topology_ref = mdtraj.Topology.from_openmm(topology)
+        self.mdtraj_trajectory_ref = None
+        self.ref_positions = None
+        if receptor_atom_indices is None:
+            align_receptor = False
+        self.align_receptor = align_receptor
         
         if platform is None:
             assert properties is None, "If platform is not set, properties cannot "\
@@ -119,18 +128,55 @@ class RAMDSimulation(openmm_app.Simulation):
             self.system, self.force_handler.ligand_atom_indices)
         return mass.value_in_unit(unit.daltons)
     
-    def get_lig_com(self, positions=None):
+    def set_reference_positions(self, positions=None):
         if positions is None:
             state = self.context.getState(getPositions = True)
             positions = state.getPositions()
+        xyz = np.array(positions.value_in_unit(unit.nanometers))
+        self.mdtraj_trajectory_ref = mdtraj.Trajectory(
+                    xyz=xyz, topology=self.mdtraj_topology_ref)
+        self.mdtraj_trajectory = mdtraj.Trajectory(
+                    xyz=xyz, topology=self.mdtraj_topology)
+        return
+        
+    def align_positions_by_reference(self, positions, ref_indices):
+        xyz = np.array(positions.value_in_unit(unit.nanometers))
+        self.mdtraj_trajectory.xyz = xyz
+        self.mdtraj_trajectory.superpose(
+            self.mdtraj_trajectory_ref, atom_indices=ref_indices, 
+            ref_atom_indices=ref_indices)
+        
+        # DEBUG
+        #pdb_filename = f"/home/lvotapka/tmp/ramd_test{self.counter}.pdb"
+        #self.mdtraj_trajectory.save(pdb_filename)
+        return
+    
+    def get_lig_com(self, positions=None, skip_alignment=False):
+        if positions is None:
+            state = self.context.getState(getPositions = True)
+            positions = state.getPositions()
+        
+        if self.align_receptor and not skip_alignment:
+            # Align by receptor positions
+            self.align_positions_by_reference(
+                positions, self.force_handler.receptor_atom_indices)
+            positions = self.mdtraj_trajectory.xyz[0,:,:] * unit.nanometer
+        
         com = base.get_ligand_com(self.system, positions, 
                                   self.force_handler.ligand_atom_indices)
         return com
         
-    def get_rec_com(self, positions=None):
+    def get_rec_com(self, positions=None, skip_alignment=False):
         if positions is None:
             state = self.context.getState(getPositions = True)
             positions = state.getPositions()
+        
+        if self.align_receptor and not skip_alignment:
+            # Align by receptor positions
+            self.align_positions_by_reference(
+                positions, self.force_handler.receptor_atom_indices)
+            positions = self.mdtraj_trajectory.xyz[0,:,:] * unit.nanometer
+        
         com = base.get_ligand_com(self.system, positions, 
                                   self.force_handler.receptor_atom_indices)
         return com
@@ -160,9 +206,18 @@ class RAMDSimulation(openmm_app.Simulation):
             self.logger.log("debugLevel               {}".format(self.debug_level))
         
         self.check_inputs()
+        if self.force_handler.receptor_atom_indices is not None\
+                and self.align_receptor:
+            self.set_reference_positions()
+            
         lig_com = self.get_lig_com()
         lig_mass = self.get_lig_mass()
         if self.force_handler.receptor_atom_indices is not None:
+            if not self.align_receptor:
+                assert not self.align_receptor, \
+                    "align_receptor must be set to False if no receptor is "\
+                    "defined."
+            
             rec_com = self.get_rec_com()
             lig_prot_com_distance = np.linalg.norm(
                 lig_com.value_in_unit(unit.angstroms) \
@@ -204,7 +259,7 @@ class RAMDSimulation(openmm_app.Simulation):
         positions = state.getPositions()
         lig_com = self.get_lig_com(positions)
         if self.force_handler.receptor_atom_indices is not None:
-            rec_com = self.get_rec_com(positions)
+            rec_com = self.get_rec_com(positions, skip_alignment=True)
             lig_prot_com_distance = np.linalg.norm(
                 lig_com.value_in_unit(unit.angstroms) \
                 - rec_com.value_in_unit(unit.angstroms))

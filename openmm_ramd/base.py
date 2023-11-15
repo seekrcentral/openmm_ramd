@@ -5,6 +5,7 @@ Contain base classes, constants, and other objects used for RAMD.
 """
 
 import numpy as np
+import mdtraj
 try:
     import openmm.unit as unit
 except ImportError:
@@ -94,6 +95,10 @@ def get_ligand_receptor_distance(system, positions, group1, group2):
                               -com1.value_in_unit(unit.nanometer))
     return distance*unit.nanometer
     
+def align_positions_by_reference(positions, ref_positions, selection):
+    # Make a Traj object from an OpenMM system
+    
+    traj.superpose(traj, atom_indices=selection, ref_atom_indices=selection)
 
 """
 def get_site_ligand_distance(topology, group1, group2):

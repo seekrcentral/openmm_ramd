@@ -219,9 +219,22 @@ def parse_ramd_log_file(ramd_log_filename):
 def condense_trajectories(trajectories, onlyZ=False):
     """
     Reduce trajectories to 1D, and compute xi values
+    
+    The variable CONDENSE_MODE represents how the ligand position and
+    acceleration vector should relate to one another. If CONDENSE_MODE is
+    "lig_avg", then the average position of the ligand is taken as the CV
+    to which the acceleration vector is dotted (for later binning). This mode
+    likely should require one to align the receptor every single frame.
+    
+    In contrast, "lig_vec" indicates that the CV is merely the vector from
+    the center of the site pointing to the COM of the ligand every frame,
+    and the acceleration vectors will be dotted to the ligand vector for
+    every frame. This mode doesn't require one to align the receptor.
     """
     # First, find the average position of all ligand positions, this will
     # define our 1D CV per trajectory
+    CONDENSE_MODE = "lig_vec" # Can be "lig_avg" or "lig_vec"
+    
     one_dim_trajs = []
     for i, trajectory in enumerate(trajectories):
         sum_ligx = 0.0
@@ -232,29 +245,30 @@ def condense_trajectories(trajectories, onlyZ=False):
         #if len(trajectory) == 0:
         #    continue
         
-        for j, frame in enumerate(trajectory):
-            [ligx, ligy, ligz, accx, accy, accz] = frame
-            sum_ligx += ligx
-            sum_ligy += ligy
-            sum_ligz += ligz
-            total_points += 1
-            if start_accx is None:
-                start_accx = accx
-            else:
-                assert start_accx == start_accx, \
-                    "Every frame must have the same acceleration vector"
+        if CONDENSE_MODE == "lig_avg":
+            for j, frame in enumerate(trajectory):
+                [ligx, ligy, ligz, accx, accy, accz] = frame
+                sum_ligx += ligx
+                sum_ligy += ligy
+                sum_ligz += ligz
+                total_points += 1
+                if start_accx is None:
+                    start_accx = accx
+                else:
+                    assert start_accx == start_accx, \
+                        "Every frame must have the same acceleration vector"
+                
+            if total_points == 0:
+                #one_dim_trajs.append([])
+                continue
             
-        if total_points == 0:
-            #one_dim_trajs.append([])
-            continue
-        
-        avg_ligx = sum_ligx / total_points
-        avg_ligy = sum_ligy / total_points
-        avg_ligz = sum_ligz / total_points
-        avg_lig_length = np.sqrt(avg_ligx**2 + avg_ligy**2 + avg_ligz**2)
-        norm_avgx = avg_ligx / avg_lig_length
-        norm_avgy = avg_ligy / avg_lig_length
-        norm_avgz = avg_ligz / avg_lig_length
+            avg_ligx = sum_ligx / total_points
+            avg_ligy = sum_ligy / total_points
+            avg_ligz = sum_ligz / total_points
+            avg_lig_length = np.sqrt(avg_ligx**2 + avg_ligy**2 + avg_ligz**2)
+            norm_avgx = avg_ligx / avg_lig_length
+            norm_avgy = avg_ligy / avg_lig_length
+            norm_avgz = avg_ligz / avg_lig_length
         
         one_dim_traj = []
         for j, frame in enumerate(trajectory):
@@ -264,9 +278,18 @@ def condense_trajectories(trajectories, onlyZ=False):
                 cv_val = ligz
                 xi_val = accz
             else:
-                cv_val = (ligx*norm_avgx + ligy*norm_avgy + ligz*norm_avgz)
-                # dot product between frame acc and avg_lig
-                xi_val = (accx*norm_avgx + accy*norm_avgy + accz*norm_avgz)
+                if CONDENSE_MODE == "lig_avg":
+                    cv_val = (ligx*norm_avgx + ligy*norm_avgy + ligz*norm_avgz)
+                    # dot product between frame acc and avg_lig
+                    xi_val = (accx*norm_avgx + accy*norm_avgy + accz*norm_avgz)
+                elif CONDENSE_MODE == "lig_vec":
+                    cv_val = np.sqrt(ligx*ligx + ligy*ligy + ligz*ligz)
+                    norm_ligx = ligx / cv_val
+                    norm_ligy = ligy / cv_val
+                    norm_ligz = ligz / cv_val
+                    xi_val = (accx*norm_ligx + accy*norm_ligy + accz*norm_ligz)
+                else:
+                    raise Exception(f"Method not implemented: {CONDENSE_MODE}")
             one_dim_traj.append([cv_val, xi_val])
             
         one_dim_trajs.append(one_dim_traj)
