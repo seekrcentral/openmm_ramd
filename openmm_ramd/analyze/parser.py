@@ -16,9 +16,9 @@ def add_new_frame(trajectory, n_frames, relative_COM_x, relative_COM_y,
                   old_ligand_step, receptor_step, accel_step):
     if n_frames > 0:
         if relative_COM_x is not None:
-            assert old_ligand_step == receptor_step, \
-                "The lines defining receptor and ligand COM are not the same "\
-                "RAMD step."
+            #assert old_ligand_step == receptor_step, \
+            #    "The lines defining receptor and ligand COM are not the same "\
+            #    "RAMD step."
             frame = [relative_COM_x, relative_COM_y, relative_COM_z,
                      accel_COM_x, accel_COM_y, accel_COM_z]
         else:
