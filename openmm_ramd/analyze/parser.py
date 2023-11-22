@@ -216,7 +216,7 @@ def parse_ramd_log_file(ramd_log_filename):
     return trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations, \
         temperature, maxDist
 
-def parse_ramd_log_file_quick(ramd_log_filename):
+def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
     """
     Parse less information out of the RAMD log files, namely some of the
     constants, as well as the ending times of the simulations. This information
@@ -230,7 +230,7 @@ def parse_ramd_log_file_quick(ramd_log_filename):
     found_constants = False
     
     # A value of -1 indicates that no exit events happened
-    exit_step = -1
+    exit_step = None
     
     with open(ramd_log_filename, "r") as f:
         for i, line in enumerate(f.readlines()):
@@ -244,7 +244,7 @@ def parse_ramd_log_file_quick(ramd_log_filename):
                     # Also the start of a new simulation
                     num_simulations += 1
                     end_times.append(exit_step)
-                    exit_step = -1
+                    exit_step = None
                     
                 else:
                     forceRAMD = forceRAMD_
@@ -258,10 +258,17 @@ def parse_ramd_log_file_quick(ramd_log_filename):
                         "timeStep"
                 else:
                     timeStep = timeStep_
-                    
-            exit_event_search = re.match("EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED")
-            exit_step = int(exit_event_search.group(1))
             
+            if include_all_times:
+                ramd_force_search = re.match("RAMD FORCE: (\d+) >", line)
+                if ramd_force_search:
+                    exit_step = int(ramd_force_search.group(1))
+            
+            exit_event_search = re.match("EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED", line)
+            if exit_event_search:
+                exit_step = int(exit_event_search.group(1))
+            
+    end_times.append(exit_step)
     assert forceRAMD is not None, \
         "The variable forceRAMD was not assigned in the log file."
     assert timeStep is not None, \
