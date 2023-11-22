@@ -8,7 +8,11 @@ Matthias Frech, Maryse Lowinski, Francois Vallee, Marc Bianciotto, Alexey Rak,
 and Rebecca C. Wade. Journal of Chemical Theory and Computation 2018 14 (7), 
 3859-3869 DOI: 10.1021/acs.jctc.8b00230 
 
-Specifically, ...
+Specifically, this finds the tau_
+
+This script ought to be run on the results of one replica at a time, and then
+the results manually averaged over all replicas in order to recreate the
+method in the paper above.
 """
 
 import argparse
@@ -63,6 +67,12 @@ def tau_ramd(ramd_log_files, include_all_times=False):
     for end_step in all_end_steps:
         if end_step is not None:
             completed_times.append(end_step * time_step)
+    
+    assert len(completed_times) > 0, \
+        "No escape events in log files. Use '-i' argument?"
+    assert len(completed_times) > 1, \
+        "More than one completed trajectory needed"
+    
     
     tau_comp, t_r, SD_r = bootstrap(completed_times)
     return tau_comp, t_r, SD_r
