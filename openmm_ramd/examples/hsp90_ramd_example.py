@@ -3,18 +3,7 @@ This sample script provides a template that one can use to run their own
 RAMD simulations.
 """
 
-import time
-from sys import stdout
-
-import simtk.openmm.app as app
-import simtk.openmm as mm
-import simtk.unit as unit
-import parmed
-import mdtraj
-import numpy as np
-
-import openmm_ramd.base as base
-from openmm_ramd import openmm_ramd
+import run_amber_RAMD
 
 prmtop_filename = "../data/hsp90_INH.prmtop"
 input_pdb_file = "../data/hsp90_INH.pdb"
@@ -35,7 +24,7 @@ num_steps = 10000000 # 20 nanoseconds
 steps_per_energy_update = 300000
 
 # time step of simulation 
-time_step = 0.002 * unit.picoseconds
+time_step = 0.002
 
 # Enter the atom indices whose center of mass defines the receptor binding site
 rec_indices = [569, 583, 605, 617, 1266, 1292, 1299, 1374, 1440, 1459, 1499,
@@ -53,74 +42,39 @@ lig_indices = [3259, 3260, 3261, 3262, 3263, 3264, 3265, 3266, 3267, 3268,
 # 3259 3260 3261 3262 3263 3264 3265 3266 3267 3268 3269 3270 3271 3272 3273 3274 3275 3276 3277 3278 3279 3280 3281 3282 3283 3284 3285 3286 3287 3288
 
 # The RAMD force constant
-ramd_force_magnitude = 14.0 * unit.kilocalories_per_mole / unit.angstrom
+ramd_force_magnitude = 14.0
 
 # simulation initial and target temperature
-temperature = 298.15 * unit.kelvin
+temperature = 298.15
 
 # If constant pressure is desired
-constant_pressure = True
-target_pressure = 1.0 * unit.bar
+target_pressure = 1.0
 
 # Define which GPU to use
 cuda_index = "0"
 
 # Nonbonded cutoff
-nonbonded_cutoff = 1.0 * unit.nanometer
+nonbonded_cutoff = 1.0
 
 # The interval between RAMD force evaluations and updates
 steps_per_RAMD_update = 50
 
-RAMD_cutoff_distance = 0.0025 * unit.nanometer
+RAMD_cutoff_distance = 0.0025
 
-RAMD_max_distance = 1.5 * unit.nanometer
+RAMD_max_distance = 1.5
 
 ramd_log_filename = "ramd.log"
 
-prmtop = app.AmberPrmtopFile(prmtop_filename)
-mypdb = app.PDBFile(input_pdb_file)
-pdb_parmed = parmed.load_file(input_pdb_file)
-assert pdb_parmed.box_vectors is not None, "No box vectors "\
-    "found in {}. ".format(input_pdb_file) \
-    + "Box vectors for an anchor must be defined with a CRYST "\
-    "line within the PDB file."
-
-box_vectors = pdb_parmed.box_vectors
-
-system = prmtop.createSystem(
-    nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
-    constraints=app.HBonds)
-if constant_pressure:
-    barostat = mm.MonteCarloBarostat(target_pressure, temperature, 25)
-    system.addForce(barostat)
-    
-integrator = mm.LangevinIntegrator(temperature, 1/unit.picosecond, time_step)
-platform = mm.Platform.getPlatformByName('CUDA')
-properties = {"CudaDeviceIndex": cuda_index, "CudaPrecision": "mixed"}
-
-simulation = openmm_ramd.RAMDSimulation(
-    prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
-    rec_indices, ramd_steps=steps_per_RAMD_update, 
-    r_min_ramd=RAMD_cutoff_distance.value_in_unit(unit.angstroms), 
-    force_out_freq=steps_per_RAMD_update, 
-    max_dist=RAMD_max_distance.value_in_unit(unit.angstrom),
-    platform=platform, properties=properties, log_file_name=ramd_log_filename)
-
-simulation.context.setPositions(mypdb.positions)
-simulation.context.setPeriodicBoxVectors(*box_vectors)
-if minimize:
-    simulation.minimizeEnergy()
-    
-simulation.context.setVelocitiesToTemperature(temperature)
-simulation.reporters.append(app.StateDataReporter(stdout, steps_per_energy_update, step=True,
-            potentialEnergy=True, temperature=True, volume=True))
-pdb_reporter = app.PDBReporter(trajectory_filename, steps_per_trajectory_update)
-simulation.reporters.append(pdb_reporter)
-start_time = time.time()
-step_counter = simulation.run_RAMD_sim(max_num_steps=num_steps)
-
-total_time = time.time() - start_time
-simulation_in_ns = step_counter * time_step.value_in_unit(unit.picoseconds) * 1e-3
-total_time_in_days = total_time / (86400.0)
-ns_per_day = simulation_in_ns / total_time_in_days
-print("RAMD benchmark:", ns_per_day, "ns/day")
+run_amber_RAMD.run_amber_RAMD(
+    input_pdb_file, prmtop_filename, rec_indices, lig_indices,
+    cuda_device_index=cuda_index, temperature=temperature, 
+    nonbonded_cutoff=nonbonded_cutoff, target_pressure=target_pressure, 
+    time_step=time_step, ramd_force_magnitude=ramd_force_magnitude, 
+    steps_per_RAMD_update=steps_per_RAMD_update,
+    RAMD_cutoff_distance=RAMD_cutoff_distance, 
+    RAMD_max_distance=RAMD_max_distance,
+    ramd_log_filename=ramd_log_filename, minimize=minimize,
+    steps_per_energy_update=steps_per_energy_update, 
+    steps_per_trajectory_update=steps_per_trajectory_update, 
+    trajectory_filename=trajectory_filename,
+    max_num_steps=num_steps)

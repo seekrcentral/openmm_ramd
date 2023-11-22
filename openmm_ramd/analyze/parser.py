@@ -216,6 +216,59 @@ def parse_ramd_log_file(ramd_log_filename):
     return trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations, \
         temperature, maxDist
 
+def parse_ramd_log_file_quick(ramd_log_filename):
+    """
+    Parse less information out of the RAMD log files, namely some of the
+    constants, as well as the ending times of the simulations. This information
+    is all that's needed for tau-ramd as well as Maximova's method.
+    """
+    end_times = []
+    forceRAMD = None
+    timeStep = None
+    num_simulations = 0
+    
+    found_constants = False
+    
+    # A value of -1 indicates that no exit events happened
+    exit_step = -1
+    
+    with open(ramd_log_filename, "r") as f:
+        for i, line in enumerate(f.readlines()):
+            forceRAMD_search = re.match("RAMD: forceRAMD * (\d+\.?\d*[eE]?[+-]?\d*)", line)
+            if forceRAMD_search:
+                forceRAMD_ = float(forceRAMD_search.group(1))
+                if forceRAMD is not None:
+                    assert forceRAMD == forceRAMD_, \
+                        "The log file may not have conflicting values of "\
+                        "forceRAMD"
+                    # Also the start of a new simulation
+                    num_simulations += 1
+                    end_times.append(exit_step)
+                    exit_step = -1
+                    
+                else:
+                    forceRAMD = forceRAMD_
+                
+            timeStep_search = re.match("RAMD: timeStep * (\d+\.?\d*[eE]?[+-]?\d*)", line)
+            if timeStep_search:
+                timeStep_ = float(timeStep_search.group(1))
+                if timeStep is not None:
+                    assert timeStep == timeStep_, \
+                        "The log file may not have conflicting values of "\
+                        "timeStep"
+                else:
+                    timeStep = timeStep_
+                    
+            exit_event_search = re.match("EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED")
+            exit_step = int(exit_event_search.group(1))
+            
+    assert forceRAMD is not None, \
+        "The variable forceRAMD was not assigned in the log file."
+    assert timeStep is not None, \
+        "The variable timeStep was not assigned in the log file."
+    
+    return end_times, forceRAMD, timeStep
+
 def condense_trajectories(trajectories, onlyZ=False):
     """
     Reduce trajectories to 1D, and compute xi values

@@ -90,6 +90,8 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     xi_bins = samples.make_xi_bins(
         num_xi_bins, num_milestones, milestones, mode)
     for i, trajectory in enumerate(one_dim_trajs):
+        if len(trajectory) == 0:
+            continue
         traj_xi = trajectory[0][1]
         found_bin = False
         for j, xi_bin in enumerate(xi_bins):

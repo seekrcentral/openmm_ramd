@@ -114,13 +114,13 @@ class RAMDSimulation(openmm_app.Simulation):
     def max_distance_exceeded(self, timestep):
         self.logger.exit_log(
             "{}  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED".format(
-            timestep), print_also=True)
+            timestep), print_also=False)
         self.logger.exit_log(
             "{}  > LIGAND EXIT EVENT DETECTED: STOP SIMULATION".format(
-            timestep), print_also=True)
+            timestep), print_also=False)
         self.logger.exit_log(
             "{}  > EXIT OPENMM".format(
-            timestep), print_also=True)
+            timestep), print_also=False)
         return
     
     def get_lig_mass(self):
