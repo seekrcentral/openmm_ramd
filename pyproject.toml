@@ -23,7 +23,10 @@ dependencies = [
     "numpy",
     "parmed",
     "mdtraj",
-    "pytest"
+    "pytest",
+    "pandas",
+    "matplotlib",
+    "seaborn",
 ]
 
 # Update the urls once the hosting is set up.

@@ -60,6 +60,11 @@ def tau_ramd(ramd_log_files, include_all_times=False):
         if forceRAMD is None:
             forceRAMD = forceRAMD_
             time_step = time_step_
+        else:
+            assert forceRAMD == forceRAMD_, "Different force constants "\
+                "found in RAMD input files. All files must have the same forces"
+            assert time_step == time_step_, "Different timesteps found "\
+                "in RAMD input files. All files must have the same timesteps."
         
         all_end_steps += end_steps
         
@@ -86,7 +91,7 @@ if __name__ == "__main__":
         "-i", "--include_all_times", dest="include_all_times", default=False, 
         help="By default, only the trajectories that end successfully will "\
         "be considered by the parser. If set to True, this flag will cause "\
-        "the times of even the unfinished trajectories to be cointed. "\
+        "the times of even the unfinished trajectories to be counted. "\
         "Default: False.", action="store_true")
     
     args = argparser.parse_args()

@@ -187,7 +187,8 @@ class RAMDSimulation(openmm_app.Simulation):
             self.logger.log("ramdSteps                {}".format(self.ramd_steps))
             self.logger.log("openmmVersion            {}".format(
                 openmm.version.full_version))
-            self.logger.log("forceRAMD                {}".format(
+            #self.logger.log("forceRAMD                {}".format(
+            self.logger.log("forceRAMD                {} kcal/(mol * A)".format(
                 self.force_handler.random_force_magnitude.value_in_unit(
                     kcal_per_mole_per_angstrom)))
             self.logger.log("rMinRamd                 {}".format(self.r_min_ramd))
