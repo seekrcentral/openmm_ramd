@@ -18,9 +18,9 @@ import openmm_ramd.analyze.samples as samples
 import openmm_ramd.analyze.milestoning as milestoning
 
 def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5, 
-                verbose=True, toy_mode=False, num_error_samples=0, 
+                toy_mode=False, num_error_samples=0, 
                 stride_error_samples=None, skip_error_samples=None, 
-                cut_out_drift=False, mode=1):
+                cut_out_drift=False, mode=1, verbose=False):
     if verbose:
         print(f"Using {num_milestones} milestones.")
         print(f"Using {num_xi_bins} angle bins.")
@@ -121,6 +121,12 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
                 xi_bin.trajs, milestones, frame_time, num_milestones,
                 remove_unbalanced_frame_counts=cut_out_drift)
         
+        if verbose:
+            print(f"count_matrix {i}:")
+            print(count_matrix)
+            print(f"time_vector {i}:")
+            print(time_vector)
+        
         xi_bin.assign_main_data_sample(
             count_matrix, time_vector, avg_time_vector)
         xi_bin.make_profiles(starting_index, wrap_sink=False, 
@@ -188,6 +194,10 @@ if __name__ == "__main__":
         "indicates that unslanting will be performed using a linear "\
         "approximation between milestones. Mode = 2 indicates that an entire "\
         "free energy profile will be constructed for unslanting. Default: 1")
+    argparser.add_argument(
+        "-v", "--verbose", dest="verbose", default=False,
+        help="Verbose mode will print out much more information about the "\
+        "milestoning model, and other information.", action="store_true")
     
     args = argparser.parse_args()
     args = vars(args)
@@ -200,13 +210,14 @@ if __name__ == "__main__":
     skip_error_samples = args["skip_error_samples"]
     cut_out_drift = args["cut_out_drift"]
     mode = args["mode"]
+    verbose = args["verbose"]
     
     analysis = analyze_log(
         ramd_log_files, num_milestones, num_angle_bins, toy_mode=toy_mode, 
         num_error_samples=num_error_samples, 
         stride_error_samples=stride_error_samples, 
         skip_error_samples=skip_error_samples, cut_out_drift=cut_out_drift, 
-        mode=mode)
+        mode=mode, verbose=verbose)
     
     analysis.print_results()
     #analysis.create_plots()
