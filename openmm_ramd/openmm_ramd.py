@@ -275,7 +275,7 @@ class RAMDSimulation(openmm_app.Simulation):
         
         lig_walk_distance = np.linalg.norm(
             lig_com.value_in_unit(unit.angstroms) \
-            - self.old_lig_com.value_in_unit(unit.angstroms))
+            - self.old_lig_com.value_in_unit(unit.angstroms)) * unit.angstroms
         if self.counter % self.force_out_freq == 0:
             if self.logger is not None:
                 self.logger.force_log("> LIGAND COM IS: {} A".format(lig_com.value_in_unit(unit.angstroms)), self.counter)
@@ -331,6 +331,7 @@ class RAMDSimulation(openmm_app.Simulation):
     
     def run_RAMD_sim(self, max_num_steps=1e8):
         self.counter = 0
+        start_lig_prot_dist = self.RAMD_start()
         # Do the simulation steps and loop here. These are done every step
         while self.counter < max_num_steps:
             lig_prot_distance = self.RAMD_step(self.ramd_steps)

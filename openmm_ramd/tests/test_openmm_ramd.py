@@ -30,7 +30,7 @@ ROOT_DIRECTORY = os.path.join(TEST_DIRECTORY, "..")
 
 def make_openmm_ramd_simulation_object(
         log_file_name=None, ramd_steps=10, r_min_ramd=0.025, force_out_freq=10, 
-        max_dist=12.0):
+        max_dist=12.0 * unit.angstroms):
     temperature = 298.15 * unit.kelvin
     ramd_force_magnitude = 14.0 * unit.kilocalories_per_mole / unit.angstrom
     rec_indices = [569, 583, 605, 617, 1266, 1292, 1299, 1374, 1440, 1459, 1499,
@@ -82,8 +82,8 @@ def test_openmm_ramd_simulation():
 def test_openmm_run_RAMD_sim(tmp_path):
     log_file_name = os.path.join(tmp_path, "ramd.log")
     simulation = make_openmm_ramd_simulation_object(
-        log_file_name, ramd_steps=10, r_min_ramd=0.025, force_out_freq=10, 
-        max_dist=12.0)
+        log_file_name, ramd_steps=10, r_min_ramd=0.025*unit.angstroms, force_out_freq=10, 
+        max_dist=12.0*unit.angstroms)
     step_counter = simulation.run_RAMD_sim(max_num_steps=50)
     assert step_counter == 50
     assert os.path.exists(log_file_name)

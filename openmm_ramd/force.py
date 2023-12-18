@@ -76,9 +76,8 @@ class RAMD_Force_Handler():
                                              0.0*kcal_per_mole_per_angstrom, 
                                              0.0*kcal_per_mole_per_angstrom])
         self.force_object = force
-        self.force_vector = np.array([0.0*kcal_per_mole_per_angstrom, 
-                                      0.0*kcal_per_mole_per_angstrom, 
-                                      0.0*kcal_per_mole_per_angstrom])
+        self.force_vector = np.array([0.0, 0.0, 0.0]) \
+            * kcal_per_mole_per_angstrom
         self.random_vector = np.array([0.0, 0.0, 0.0])
         return
     

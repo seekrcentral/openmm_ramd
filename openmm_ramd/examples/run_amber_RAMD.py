@@ -62,9 +62,9 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
     simulation = ramd.RAMDSimulation(
         prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
         rec_indices, ramd_steps=steps_per_RAMD_update, 
-        r_min_ramd=RAMD_cutoff_distance.value_in_unit(unit.angstroms), 
+        r_min_ramd=RAMD_cutoff_distance, 
         force_out_freq=steps_per_RAMD_update, 
-        max_dist=RAMD_max_distance.value_in_unit(unit.angstrom),
+        max_dist=RAMD_max_distance,
         platform=platform, properties=properties, log_file_name=ramd_log_filename)
     
     simulation.context.setPositions(mypdb.positions)
