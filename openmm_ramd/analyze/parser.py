@@ -315,7 +315,7 @@ def condense_trajectories(trajectories, onlyZ=False):
                 if start_accx is None:
                     start_accx = accx
                 else:
-                    assert start_accx == start_accx, \
+                    assert start_accx == accx, \
                         "Every frame must have the same acceleration vector"
                 
             if total_points == 0:

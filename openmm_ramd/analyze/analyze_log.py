@@ -69,7 +69,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
         print("forceRAMD:", forceRAMD, "kcal/(mole * Angstrom)")
         print("time_step:", time_step, "ps")
         print("temperature:", temperature, "K")
-        print("max_dist:", max_dist, "A")
+        print("max_dist:", max_dist, "nm")
         print("beta:", beta)
     
     # Each trajectory represents a set of frames between force changes
@@ -84,9 +84,9 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5,
     bulk_milestone = num_milestones - 1
     if verbose:
         np.set_printoptions(precision=3)
-        print("milestones:", np.array(milestones), "h:", f"{h:.3f} (A)")
+        print("milestones:", np.array(milestones), "h:", f"{h:.3f} (nm)")
         print("starting_index:", starting_index)
-        
+    
     xi_bins = samples.make_xi_bins(
         num_xi_bins, num_milestones, milestones, mode)
     for i, trajectory in enumerate(one_dim_trajs):
