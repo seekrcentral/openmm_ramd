@@ -69,7 +69,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=10,
         print("forceRAMD:", forceRAMD, "kcal/(mole * Angstrom)")
         print("time_step:", time_step, "ps")
         print("temperature:", temperature, "K")
-        print("max_dist:", max_dist, "nm")
+        print("max_dist:", max_dist, "A")
         print("beta:", beta)
     
     # Each trajectory represents a set of frames between force changes
