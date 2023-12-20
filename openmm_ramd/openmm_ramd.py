@@ -236,10 +236,10 @@ class RAMDSimulation(openmm_app.Simulation):
             self.logger.log(f"calculated ligand mass {lig_mass}")
             self.logger.timestep_log("***** INITIALIZE RAMD SIMULATION *****", self.counter)
             self.logger.timestep_log("   >>> minimum travelled distance (A): {}"\
-                                     .format(self.r_min_ramd), self.counter)
+                                     .format(self.r_min_ramd.value_in_unit(unit.angstroms)), self.counter)
             vMin = self.r_min_ramd / self.ramd_steps
             self.logger.timestep_log("   >>> minimum velocity (A/fs): {}"\
-                                     .format(vMin), self.counter)
+                                     .format(vMin.value_in_unit(unit.angstroms)), self.counter)
             self.logger.timestep_log("   >>> LIGAND COM IS: {} A".format(lig_com.value_in_unit(unit.angstroms)), self.counter)
             if self.force_handler.receptor_atom_indices is not None:
                 self.logger.timestep_log("   >>> PROTEIN COM IS: {} A".format(rec_com.value_in_unit(unit.angstroms)), self.counter)

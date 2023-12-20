@@ -57,6 +57,8 @@ lig_indices = [3259, 3260, 3261, 3262, 3263, 3264, 3265, 3266, 3267, 3268,
 #  distance
 ramd_force_magnitude = 14.0 * unit.kilocalories_per_mole / unit.angstrom
 
+restraint_force_constant = 100.0 * unit.kilocalories_per_mole / unit.angstrom**2
+
 # simulation initial and target temperature
 temperature = 298.15 * unit.kelvin
 
@@ -97,6 +99,11 @@ if constant_pressure:
 integrator = mm.LangevinIntegrator(temperature, 1/unit.picosecond, time_step)
 platform = mm.Platform.getPlatformByName('CUDA')
 properties = {"CudaDeviceIndex": cuda_index, "CudaPrecision": "mixed"}
+
+# Impose restraints
+restraint_indices = rec_indices
+base.impose_receptor_restraints(
+    system, mypdb.positions, restraint_force_constant, restraint_indices)
 
 simulation = openmm_ramd.RAMDSimulation(
     prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 

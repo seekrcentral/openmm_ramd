@@ -352,6 +352,8 @@ def condense_trajectories(trajectories, onlyZ=False):
                     raise Exception(f"Method not implemented: {CONDENSE_MODE}")
             one_dim_traj.append([cv_val, xi_val])
             
+        print("one_dim_traj:", one_dim_traj)
+        exit()
         one_dim_trajs.append(one_dim_traj)
         
     return one_dim_trajs

@@ -8,8 +8,10 @@ import numpy as np
 import mdtraj
 try:
     import openmm.unit as unit
+    import openmm
 except ImportError:
     import simtk.openmm.unit as unit
+    import simtk.openmm as openmm
     
 kcal_per_mole_per_angstrom = unit.kilocalories_per_mole / unit.angstrom
 
@@ -130,3 +132,17 @@ def get_indices_ligand(pdb_filename, lig_resname):
     traj = mdtraj.load(pdb_filename)
     atom_indices = traj.topology.select(f"resname {lig_resname}")
     return atom_indices
+
+def impose_receptor_restraints(system, positions, force_constant, indices):
+    restraint_expr = "0.5*k*((x-x0)^2+(y-y0)^2+(z-z0)^2)"
+    force = openmm.CustomExternalForce(restraint_expr)
+    force.addGlobalParameter("k", force_constant)
+    force.addPerParticleParameter("x0")
+    force.addPerParticleParameter("y0")
+    force.addPerParticleParameter("z0")
+    for index in indices:
+        position = positions[index]
+        force.addParticle(index, [position[0], position[1], position[2]])
+        
+    system.addForce(force)
+    return
