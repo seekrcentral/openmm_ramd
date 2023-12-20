@@ -17,7 +17,7 @@ import openmm_ramd.analyze.parser as parser
 import openmm_ramd.analyze.samples as samples
 import openmm_ramd.analyze.milestoning as milestoning
 
-def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=5, 
+def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=10, 
                 toy_mode=False, num_error_samples=0, 
                 stride_error_samples=None, skip_error_samples=None, 
                 cut_out_drift=False, mode=1, verbose=False):

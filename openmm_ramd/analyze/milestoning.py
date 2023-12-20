@@ -33,6 +33,11 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
     assert min_location < max_location, \
         "The minimum must be less than the maximum."
     
+    print("starting_cv_val:", starting_cv_val)
+    print("min_location:", min_location)
+    print("max_location:", max_location)
+    exit()
+    
     assert starting_cv_val is not None, "No starting CV value found."
     
     min_max_distance = maxDist - min_location

@@ -20,7 +20,7 @@ prmtop_filename = "../data/hsp90_INH.prmtop"
 input_pdb_file = "../data/hsp90_INH.pdb"
 
 # Output equilibration trajectory
-trajectory_filename = "ramd_trajectory.pdb"
+trajectory_filename = "ramd_trajectory.dcd"
 
 # The interval between updates to the equilibration trajectory
 steps_per_trajectory_update = 50000

@@ -191,8 +191,8 @@ class RAMDSimulation(openmm_app.Simulation):
             self.logger.log("forceRAMD                {} kcal/(mol * A)".format(
                 self.force_handler.random_force_magnitude.value_in_unit(
                     kcal_per_mole_per_angstrom)))
-            self.logger.log("rMinRamd                 {}".format(
-                self.r_min_ramd.value_in_unit(unit.nanometer)))
+            self.logger.log("rMinRamd                 {} A".format(
+                self.r_min_ramd.value_in_unit(unit.angstroms)))
             self.logger.log("forceOutFreq             {}".format(self.force_out_freq))
             self.logger.log("timeStep                 {}".format(self.integrator.getStepSize()))
             self.logger.log("temperature              {}".format(self.integrator.getTemperature()))
@@ -204,8 +204,8 @@ class RAMDSimulation(openmm_app.Simulation):
             self.logger.log("mdSteps                  {}".format(self.md_steps))
             self.logger.log("mdStart                  {}".format(self.md_start))
             self.logger.log("rMinMd                   {}".format(self.r_min_md))
-            self.logger.log("maxDist                  {} nm".format(
-                self.max_dist.value_in_unit(unit.nanometer)))
+            self.logger.log("maxDist                  {} A".format(
+                self.max_dist.value_in_unit(unit.angstroms)))
             self.logger.log("debugLevel               {}".format(self.debug_level))
         
         self.check_inputs()
