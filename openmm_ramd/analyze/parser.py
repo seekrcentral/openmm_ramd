@@ -173,6 +173,12 @@ def parse_ramd_log_file(ramd_log_filename):
                     new_trajectory_frame = True
                 new_trajectory = True
             
+            if new_trajectory:
+                if len(trajectory) > 0:
+                    trajectories.append(trajectory)
+                    trajectory = []
+                    n_frames = 0
+                    
             if new_trajectory_frame:
                 if n_frames > 0:
                     assert old_ligand_COM_x is not None, \
@@ -182,12 +188,6 @@ def parse_ramd_log_file(ramd_log_filename):
                     relative_COM_z, old_ligand_COM_x, old_ligand_COM_y, 
                     old_ligand_COM_z, accel_COM_x, accel_COM_y, accel_COM_z,
                     old_ligand_step, receptor_step, accel_step)
-                
-            if new_trajectory:
-                if len(trajectory) > 0:
-                    trajectories.append(trajectory)
-                    trajectory = []
-                    n_frames = 0
                 
         if n_frames > 0:
             accel_step = old_ligand_step
@@ -276,7 +276,7 @@ def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
     
     return end_times, forceRAMD, timeStep
 
-def condense_trajectories(trajectories, onlyZ=False):
+def condense_trajectories(trajectories, max_dist, onlyZ=False):
     """
     Reduce trajectories to 1D, and compute xi values
     
@@ -293,43 +293,48 @@ def condense_trajectories(trajectories, onlyZ=False):
     """
     # First, find the average position of all ligand positions, this will
     # define our 1D CV per trajectory
-    CONDENSE_MODE = "lig_vec" # Can be "lig_avg" or "lig_vec"
+    CONDENSE_MODE = "lig_avg" # Can be "lig_avg" or "lig_vec"
+    
+    
+    sum_ligx = 0.0
+    sum_ligy = 0.0
+    sum_ligz = 0.0
+    total_points = 0
+    start_accx = None
+    #if len(trajectory) == 0:
+    #    continue
+        
+    if CONDENSE_MODE == "lig_avg":
+        for i, trajectory in enumerate(trajectories):
+            frame = trajectory[-1]
+            [ligx, ligy, ligz, accx, accy, accz] = frame
+            lig_length = np.sqrt(ligx**2 + ligy**2 + ligz**2)
+            if lig_length < max_dist - 0.1:
+                continue
+                
+            sum_ligx += ligx
+            sum_ligy += ligy
+            sum_ligz += ligz
+            total_points += 1
+            if start_accx is None:
+                start_accx = accx
+            else:
+                #assert start_accx == accx, \
+                #    "Every frame must have the same acceleration vector"
+                pass
+        
+        assert total_points > 0, "No trajectories detected."
+        
+        avg_ligx = sum_ligx / total_points
+        avg_ligy = sum_ligy / total_points
+        avg_ligz = sum_ligz / total_points
+        avg_lig_length = np.sqrt(avg_ligx**2 + avg_ligy**2 + avg_ligz**2)
+        norm_avgx = avg_ligx / avg_lig_length
+        norm_avgy = avg_ligy / avg_lig_length
+        norm_avgz = avg_ligz / avg_lig_length
     
     one_dim_trajs = []
     for i, trajectory in enumerate(trajectories):
-        sum_ligx = 0.0
-        sum_ligy = 0.0
-        sum_ligz = 0.0
-        total_points = 0
-        start_accx = None
-        #if len(trajectory) == 0:
-        #    continue
-        
-        if CONDENSE_MODE == "lig_avg":
-            for j, frame in enumerate(trajectory):
-                [ligx, ligy, ligz, accx, accy, accz] = frame
-                sum_ligx += ligx
-                sum_ligy += ligy
-                sum_ligz += ligz
-                total_points += 1
-                if start_accx is None:
-                    start_accx = accx
-                else:
-                    assert start_accx == accx, \
-                        "Every frame must have the same acceleration vector"
-                
-            if total_points == 0:
-                #one_dim_trajs.append([])
-                continue
-            
-            avg_ligx = sum_ligx / total_points
-            avg_ligy = sum_ligy / total_points
-            avg_ligz = sum_ligz / total_points
-            avg_lig_length = np.sqrt(avg_ligx**2 + avg_ligy**2 + avg_ligz**2)
-            norm_avgx = avg_ligx / avg_lig_length
-            norm_avgy = avg_ligy / avg_lig_length
-            norm_avgz = avg_ligz / avg_lig_length
-        
         one_dim_traj = []
         for j, frame in enumerate(trajectory):
             [ligx, ligy, ligz, accx, accy, accz] = frame
@@ -339,7 +344,8 @@ def condense_trajectories(trajectories, onlyZ=False):
                 xi_val = accz
             else:
                 if CONDENSE_MODE == "lig_avg":
-                    cv_val = (ligx*norm_avgx + ligy*norm_avgy + ligz*norm_avgz)
+                    #cv_val = (ligx*norm_avgx + ligy*norm_avgy + ligz*norm_avgz)
+                    cv_val = np.sqrt(ligx*ligx + ligy*ligy + ligz*ligz)
                     # dot product between frame acc and avg_lig
                     xi_val = (accx*norm_avgx + accy*norm_avgy + accz*norm_avgz)
                 elif CONDENSE_MODE == "lig_vec":
@@ -352,8 +358,7 @@ def condense_trajectories(trajectories, onlyZ=False):
                     raise Exception(f"Method not implemented: {CONDENSE_MODE}")
             one_dim_traj.append([cv_val, xi_val])
             
-        print("one_dim_traj:", one_dim_traj)
-        exit()
+        
         one_dim_trajs.append(one_dim_traj)
         
     return one_dim_trajs

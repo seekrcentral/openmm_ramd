@@ -13,7 +13,6 @@ import openmm_ramd.analyze.error_margins as error_margins
 
 kB_kcal_per_mol_per_kelvin = unit.MOLAR_GAS_CONSTANT_R.in_units_of(
     unit.kilocalories_per_mole / unit.kelvin)
-A_per_nm = 10.0
 
 class Data_sample():
     """
@@ -73,8 +72,8 @@ class Xi_bin():
         data_sample.Q = unslanted_rate_matrix
         return data_sample
     
-    def unslant_data_samples(self, forceRAMD_in_nm_unitless, beta):
-        slanting_force = -self.midpoint * forceRAMD_in_nm_unitless
+    def unslant_data_samples(self, forceRAMD_in_A_unitless, beta):
+        slanting_force = -self.midpoint * forceRAMD_in_A_unitless
         if self.mode == 1:
             unslanted_rate_matrix, unslanted_transition_matrix, \
                 unslanted_avg_time_vector \

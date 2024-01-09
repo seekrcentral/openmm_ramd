@@ -23,9 +23,9 @@ def test_parse_ramd_log_file(small_linear_logfile_persistent):
     assert np.isclose(trajectories[0][0][4], 0.82472121)
     assert np.isclose(trajectories[0][0][5], -0.31629834)
     
-    assert np.isclose(trajectories[1][0][0], 2.16828823)
-    assert np.isclose(trajectories[1][0][1], 16.58750725)
-    assert np.isclose(trajectories[1][0][2], 0.47683921)
+    assert np.isclose(trajectories[1][0][0], 2.1617403)
+    assert np.isclose(trajectories[1][0][1], 17.47498703)
+    assert np.isclose(trajectories[1][0][2], 0.09007598)
     assert np.isclose(trajectories[1][0][3], 0.20150257)
     assert np.isclose(trajectories[1][0][4], 0.27089315)
     assert np.isclose(trajectories[1][0][5], 0.94128296)
@@ -50,7 +50,7 @@ def test_parse_ramd_log_file_large(large_linear_logfile_persistent):
     assert forceRAMD == 0.1
     assert timeStep == 0.002
     assert num_simulations == 101
-    assert len(trajectories) == 241
+    assert len(trajectories) == 242
     return
 
 def test_condense_trajectories(small_linear_logfile_persistent):

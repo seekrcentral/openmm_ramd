@@ -71,10 +71,17 @@ class RAMDSimulation(openmm_app.Simulation):
         self.debug_level = debug_level
         if ramd_seed > 0:
             integrator.setRandomNumberSeed(ramd_seed)
-        self.mdtraj_topology = mdtraj.Topology.from_openmm(topology)
-        self.mdtraj_trajectory = None
-        self.mdtraj_topology_ref = mdtraj.Topology.from_openmm(topology)
-        self.mdtraj_trajectory_ref = None
+        if align_receptor:
+            self.mdtraj_topology = mdtraj.Topology.from_openmm(topology)
+            self.mdtraj_trajectory = None
+            self.mdtraj_topology_ref = mdtraj.Topology.from_openmm(topology)
+            self.mdtraj_trajectory_ref = None
+        else:
+            self.mdtraj_topology = None
+            self.mdtraj_trajectory = None
+            self.mdtraj_topology_ref = None
+            self.mdtraj_trajectory_ref = None
+            
         self.ref_positions = None
         if receptor_atom_indices is None:
             align_receptor = False
@@ -266,6 +273,9 @@ class RAMDSimulation(openmm_app.Simulation):
             lig_prot_com_distance = np.linalg.norm(
                 lig_com.value_in_unit(unit.angstroms) \
                 - rec_com.value_in_unit(unit.angstroms))
+        else:
+            lig_prot_com_distance = np.linalg.norm(
+                lig_com.value_in_unit(unit.angstroms))
         
         force_direction = self.force_handler.force_vector
         force_direction_magnitude = np.linalg.norm(

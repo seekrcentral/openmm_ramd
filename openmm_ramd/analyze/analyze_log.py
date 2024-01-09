@@ -17,6 +17,8 @@ import openmm_ramd.analyze.parser as parser
 import openmm_ramd.analyze.samples as samples
 import openmm_ramd.analyze.milestoning as milestoning
 
+A_per_nm = 10.0
+
 def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=10, 
                 toy_mode=False, num_error_samples=0, 
                 stride_error_samples=None, skip_error_samples=None, 
@@ -75,7 +77,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=10,
     # Each trajectory represents a set of frames between force changes
     # Align the trajectories and convert to 1D, and xi values
     one_dim_trajs = parser.condense_trajectories(
-        trajectory_list, onlyZ=toy_mode)
+        trajectory_list, max_dist, onlyZ=toy_mode)
         
     #Construct a milestoning model based on trajectory fragments
     milestones, min_location, max_location, starting_cv_val, starting_index, h \
@@ -84,7 +86,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=10,
     bulk_milestone = num_milestones - 1
     if verbose:
         np.set_printoptions(precision=3)
-        print("milestones:", np.array(milestones), "h:", f"{h:.3f} (nm)")
+        print("milestones:", np.array(milestones), "h:", f"{h:.3f} (A)")
         print("starting_index:", starting_index)
     
     xi_bins = samples.make_xi_bins(
@@ -105,9 +107,9 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=10,
             raise Exception(f"xi value {traj_xi} not placed in bin.")
     
     frame_time = time_step * force_out_freq
-    forceRAMD_in_nm_unitless = forceRAMD * samples.A_per_nm
-    forceRAMD_in_nm = forceRAMD_in_nm_unitless * unit.kilocalories_per_mole
-    forceRAMD_in_A = forceRAMD * unit.kilocalories_per_mole
+    #forceRAMD_in_nm_unitless = forceRAMD * A_per_nm
+    #forceRAMD_in_nm = forceRAMD_in_nm_unitless * unit.kilocalories_per_mole
+    #forceRAMD_in_A = forceRAMD * unit.kilocalories_per_mole
     
     for i, xi_bin in enumerate(xi_bins):
         xi = xi_bin.midpoint
@@ -154,7 +156,7 @@ if __name__ == "__main__":
         "ramd_log_files", metavar="RAMDLOGFILES", type=str, nargs="+",
         help="The RAMD log files to open and parse.")
     argparser.add_argument(
-        "-n", "--num_milestones", dest="num_milestones", default=10,
+        "-n", "--num_milestones", dest="num_milestones", default=20,
         help="The number of milestones to use in the milestoning "\
         "calculation.", type=int)
     argparser.add_argument(
@@ -220,4 +222,4 @@ if __name__ == "__main__":
         mode=mode, verbose=verbose)
     
     analysis.print_results()
-    #analysis.create_plots()
+    analysis.create_plots()
