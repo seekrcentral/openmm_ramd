@@ -41,22 +41,31 @@ def remove_slant(milestones, energy_profile, slanting_force,
     return unslanted_energy_profile
     
 def unslant_transition_matrix_constant_approx(
-        milestones, transition_matrix, avg_time_vector, slanting_force, beta):
+        milestones, transition_matrix, avg_time_vector, avg_time_matrix, 
+        slanting_force, beta):
     num_milestones = len(milestones)
     unslanted_rate_matrix = np.zeros((num_milestones, num_milestones), dtype=np.longdouble)
     unslanted_transition_matrix = np.zeros((num_milestones, num_milestones))
     unslanted_avg_time_vector = np.zeros((num_milestones, 1))
+    unslanted_avg_time_matrix = np.zeros((num_milestones, num_milestones))
+    
+    KEEP_ORIGINAL_TIMES_DEBUG = False
     
     # i == 0
     unslanted_transition_matrix[:,0] = transition_matrix[:,0]
-    unslanted_avg_time_vector[0,0] = avg_time_vector[0,0]
+    span = milestones[1] - milestones[0]
+    factor = np.exp(-beta * slanting_force * span / 3.0)
+    unslanted_avg_time_matrix[1,0] = avg_time_matrix[1,0] * factor
+    unslanted_avg_time_vector[0, 0] += unslanted_avg_time_matrix[1,0]
     
     # i == num_milestones - 1
     unslanted_transition_matrix[:,-1] = transition_matrix[:,-1]
-    unslanted_avg_time_vector[-1,0] = avg_time_vector[-1,0]
-    
-    # NOTE: this theory will neglect the effects of transitions beyond the
-    # immediately adjacent milestones - creating errors, but is unavoidable.
+    i = num_milestones-1
+    j = num_milestones-2
+    span = milestones[j] - milestones[i]
+    factor = np.exp(-beta * slanting_force * span / 3.0)
+    unslanted_avg_time_matrix[j,i] = avg_time_matrix[j,i] * factor
+    unslanted_avg_time_vector[i, 0] += unslanted_avg_time_matrix[j,i]
     
     for i in range(1, num_milestones-1): # columns
         assert np.isclose(milestones[i+1] - milestones[i],
@@ -83,8 +92,13 @@ def unslant_transition_matrix_constant_approx(
         if sum_new_ps > 0.0:
             for j in range(num_milestones):
                 unslanted_transition_matrix[j,i] = new_ps[j] / sum_new_ps
-                
-            unslanted_avg_time_vector[i, 0] = avg_time_vector[i, 0]
+            
+            unslanted_avg_time_vector[i, 0] = 0.0
+            for j in range(num_milestones):
+                span = milestones[j] - milestones[i]
+                factor = np.exp(-beta * slanting_force * span / 3.0)
+                unslanted_avg_time_matrix[j,i] = avg_time_matrix[j,i] * factor
+                unslanted_avg_time_vector[i, 0] += unslanted_avg_time_matrix[j,i] * new_ps[j]
     
     for i in range(num_milestones):
         for j in range(num_milestones):

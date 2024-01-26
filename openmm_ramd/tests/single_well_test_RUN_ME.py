@@ -34,11 +34,11 @@ start_z = 1.0
 
 # number of finite elements for integration
 n_z = 1000
-num_milestones = 21
+num_milestones = 41
 num_xi_bins = 10
 start_milestone_index = num_milestones // 10
 
-WELL_DEPTH = 10.0 # * 4.184
+WELL_DEPTH = 7.0 # * 4.184
 force_magnitude = 2.0 #5.0
 
 MODE = 1
@@ -209,6 +209,7 @@ def milestoning_statistics_from_profiles(
     transition_matrix = np.zeros((num_milestones, num_milestones))
     count_matrix = np.zeros((num_milestones, num_milestones))
     avg_time_vector = np.zeros((num_milestones, 1))
+    avg_time_matrix = np.zeros((num_milestones, num_milestones))
     for i, milestone in enumerate(milestones):
         if i == 0:
             doing_a = False
@@ -271,8 +272,15 @@ def milestoning_statistics_from_profiles(
             count_matrix[i+1, i] = base_count
         
         avg_time_vector[i] = time
+        if doing_a:
+            time_b_to_a = u_b_to_a / flux_b_to_a
+            avg_time_matrix[i-1,i] = time_b_to_a
+        if doing_c:
+            time_b_to_c = u_b_to_c / flux_b_to_c
+            avg_time_matrix[i+1,i] = time_b_to_c
+            
         rate_matrix[i, i] = -1.0 / time
-    return transition_matrix, avg_time_vector, rate_matrix, count_matrix
+    return transition_matrix, avg_time_vector, avg_time_matrix, rate_matrix, count_matrix
 
 def make_time_vector_from_avg_time_vector(count_matrix, avg_time_vector):
     n = count_matrix.shape[0]
@@ -319,11 +327,11 @@ if __name__ == "__main__":
     stationary_dist_normalized = stationary_dist1 / sp_int.simps(
         stationary_dist1, dx=h_z)
     
-    #milestones = np.linspace(min_z, max_z, num_milestones)
-    milestones = 0.1 * np.array(
-        [0.671, 5.401, 10.131, 14.861, 19.591, 24.321, 29.051, 33.781, 38.511, 43.241, 
-         47.971, 52.701, 57.431, 62.161, 66.89,  71.62,  76.35,  81.08,  
-         85.81,  90.54,  95.27 ])
+    milestones = np.linspace(min_z, max_z, num_milestones)
+    #milestones = 0.1 * np.array(
+    #    [0.671, 5.401, 10.131, 14.861, 19.591, 24.321, 29.051, 33.781, 38.511, 43.241, 
+    #     47.971, 52.701, 57.431, 62.161, 66.89,  71.62,  76.35,  81.08,  
+    #     85.81,  90.54,  95.27 ])
     
     milestone_h = milestones[1] - milestones[0]
     
@@ -350,7 +358,7 @@ if __name__ == "__main__":
             z_s, slanting_force, potential_energy_func, 
             diffusion_coefficient_func)
         
-        transition_matrix, avg_time_vector, rate_matrix, count_matrix \
+        transition_matrix, avg_time_vector, avg_time_matrix, rate_matrix, count_matrix \
             = milestoning_statistics_from_profiles(
             milestones, z_s, potential_energy_slant, diffusion_coefficient_slant, beta)
         
@@ -358,7 +366,7 @@ if __name__ == "__main__":
             count_matrix, avg_time_vector)
         
         xi_bin.assign_main_data_sample(
-            count_matrix, time_vector, avg_time_vector)
+            count_matrix, time_vector, avg_time_vector, avg_time_matrix)
         
         xi_bin.main_data_sample.K = transition_matrix
         xi_bin.main_data_sample.Q = milestoning.make_rate_matrix(

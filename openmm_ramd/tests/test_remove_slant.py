@@ -93,6 +93,102 @@ def test_get_smoluchowski_u():
     assert np.isclose(int_u_two_points2, exact_int_u2)
     return
 
+#TODO: Add test here for unslant_transition_matrix_constant_approx
+def test_unslant_transition_matrix_constant_approx():
+    num_milestones = 11
+    milestones = np.linspace(0.0, 10.0, num_milestones)
+    slanting_force = -0.1
+    diffusion_coeff = 1.0
+    beta = 0.5
+    
+    flat_rate_matrix = np.zeros((num_milestones, num_milestones))
+    flat_transition_matrix = np.zeros((num_milestones, num_milestones))
+    flat_avg_time_vector = np.zeros((num_milestones, 1))
+    flat_avg_time_matrix = np.zeros((num_milestones, num_milestones))
+    
+    span = milestones[1] - milestones[0]
+    time_forward_flat = span / (2.0 * diffusion_coeff)
+    time_backward_flat = time_forward_flat
+    
+    for i in range(num_milestones):
+        if i == 0:
+            flat_transition_matrix[i+1, i] = 1.0
+            flat_avg_time_vector[i, 0] = time_forward_flat
+            flat_avg_time_matrix[i+1, i] = time_forward_flat
+            flat_rate_matrix[i+1, i] = 1.0/flat_avg_time_vector[i, 0]
+            
+        elif i == num_milestones-1:
+            flat_transition_matrix[i-1, i] = 1.0
+            flat_avg_time_vector[i, 0] = time_backward_flat
+            flat_avg_time_matrix[i-1, i] = time_backward_flat
+            flat_rate_matrix[i-1, i] = 1.0/flat_avg_time_vector[i, 0]
+            
+        else:
+            flat_transition_matrix[i-1, i] = 0.5
+            flat_transition_matrix[i+1, i] = 0.5
+            flat_avg_time_vector[i, 0] = time_forward_flat
+            flat_avg_time_matrix[i-1, i] = time_backward_flat
+            flat_avg_time_matrix[i+1, i] = time_forward_flat
+            flat_rate_matrix[i-1, i] = 0.5/flat_avg_time_vector[i, 0]
+            flat_rate_matrix[i+1, i] = 0.5/flat_avg_time_vector[i, 0]
+    
+    #print("flat_transition_matrix:")
+    #print(flat_transition_matrix)
+    #print("flat_avg_time_vector:")
+    #print(flat_avg_time_vector)
+    #print("flat_avg_time_matrix:")
+    #print(flat_avg_time_matrix)
+    #print("flat_rate_matrix:")
+    #print(flat_rate_matrix)
+    
+    unslanted_rate_matrix, unslanted_transition_matrix, \
+        unslanted_avg_time_vector \
+        = remove_slant.unslant_transition_matrix_constant_approx(
+            milestones, flat_transition_matrix, flat_avg_time_vector, 
+            flat_avg_time_matrix, slanting_force, beta)
+    
+    #print("unslanted_rate_matrix:")
+    #print(unslanted_rate_matrix)
+    #print("unslanted_transition_matrix:")
+    #print(unslanted_transition_matrix)
+    #print("unslanted_avg_time_vector:")
+    #print(unslanted_avg_time_vector)
+    
+    A = slanting_force
+    diffusion = diffusion_coeff
+    a = milestones[0]
+    b = milestones[1]
+    c = milestones[2]
+    
+    factor1 = 1.0 / (1.0 - np.exp(-beta*A*(c-b)))
+    second_milestone_flux1 = beta * A * diffusion * factor1
+    second_milestone_int_u1 = factor1 * (c - b - (1.0 - np.exp(-beta*A*(c-b)))/(beta*A))
+    
+    factor2 = 1.0 / (np.exp(beta*A*(c-b)) - 1.0)
+    second_milestone_flux2 = beta * A * diffusion * factor2
+    second_milestone_int_u2 = factor2 * ((np.exp(beta*A*(c-b)) - 1.0)/(beta*A) - c + b)
+    
+    second_milestone_time = (second_milestone_int_u1 + second_milestone_int_u2) \
+        / (second_milestone_flux1 + second_milestone_flux2)
+    
+    p_down = second_milestone_flux2 / (second_milestone_flux1 + second_milestone_flux2)
+    p_up = second_milestone_flux1 / (second_milestone_flux1 + second_milestone_flux2)
+    rate_down = p_down/second_milestone_time
+    rate_up = p_up/second_milestone_time
+    
+    #print("second_milestone_time:", second_milestone_time)
+    #print("p_down:", p_down)
+    #print("p_up:", p_up)
+    #print("rate_down:", rate_down)
+    #print("rate_up:", rate_up)
+    assert np.isclose(second_milestone_time, unslanted_avg_time_vector[1, 0], atol=0.001)
+    assert np.isclose(unslanted_rate_matrix[1,1], -1.0/second_milestone_time, atol=0.001)
+    assert np.isclose(unslanted_rate_matrix[0,1], rate_down, atol=0.001)
+    assert np.isclose(unslanted_rate_matrix[2,1], rate_up, atol=0.001)
+    assert np.isclose(unslanted_transition_matrix[0,1], p_down, atol=0.001)
+    assert np.isclose(unslanted_transition_matrix[2,1], p_up, atol=0.001)
+    return
+    
 def test_unslant_transition_matrix_from_energy_profile():
     num_milestones = 11
     milestones = np.linspace(0.0, 10.0, num_milestones)

@@ -22,6 +22,7 @@ class Data_sample():
         self.N_ij = None
         self.R_i = None
         self.t = None
+        self.t_matrix = None
         self.Q = None
         self.K = None
         self.K_hat = None
@@ -50,15 +51,30 @@ class Xi_bin():
         return
     
     def assign_main_data_sample(self, count_matrix, time_vector, 
-                                avg_time_vector):
+                                avg_time_vector, avg_time_matrix):
         self.main_data_sample = Data_sample()
         self.main_data_sample.N_ij = count_matrix
         self.main_data_sample.R_i = time_vector
         self.main_data_sample.t = avg_time_vector
+        self.main_data_sample.t_matrix = avg_time_matrix
         self.main_data_sample.K = milestoning.make_transition_matrix(
             self.num_milestones, count_matrix)
         self.main_data_sample.Q = milestoning.make_rate_matrix(
             self.num_milestones, self.main_data_sample.K, avg_time_vector)
+        return
+    
+    def make_profiles(self, starting_index, wrap_sink, unitless_beta,
+                              data_sample=None):
+        h = self.milestones[1] - self.milestones[0]
+        if data_sample is None:
+            data_sample = self.main_data_sample
+        data_sample.p_i = milestoning.compute_stationary_probabilities(
+            data_sample.K, data_sample.t, 
+            self.num_milestones, starting_index, wrap_sink=wrap_sink)
+        data_sample.free_energy_profile = remove_slant.make_energy_profile(
+            data_sample.p_i, unitless_beta, starting_index)
+        data_sample.diffusion_profile = milestoning.compute_diffusion_coefficients(
+            data_sample.Q, self.num_milestones, h)
         return
     
     def assign_unslanted_data(
@@ -79,7 +95,8 @@ class Xi_bin():
                 unslanted_avg_time_vector \
                     = remove_slant.unslant_transition_matrix_constant_approx(
                     self.milestones, self.main_data_sample.K, 
-                    self.main_data_sample.t, slanting_force, beta)
+                    self.main_data_sample.t, self.main_data_sample.t_matrix, 
+                    slanting_force, beta)
             unslanted_energy_profile = np.zeros(self.num_milestones)
                     
         elif self.mode == 2:
@@ -108,20 +125,6 @@ class Xi_bin():
         new_data_sample.free_energy_profile = unslanted_energy_profile
         self.main_data_sample_unslanted = new_data_sample
         
-        return
-    
-    def make_profiles(self, starting_index, wrap_sink, unitless_beta,
-                              data_sample=None):
-        h = self.milestones[1] - self.milestones[0]
-        if data_sample is None:
-            data_sample = self.main_data_sample
-        data_sample.p_i = milestoning.compute_stationary_probabilities(
-            data_sample.K, data_sample.t, 
-            self.num_milestones, starting_index, wrap_sink=wrap_sink)
-        data_sample.free_energy_profile = remove_slant.make_energy_profile(
-            data_sample.p_i, unitless_beta, starting_index)
-        data_sample.diffusion_profile = milestoning.compute_diffusion_coefficients(
-            data_sample.Q, self.num_milestones, h)
         return
     
 class Analysis:

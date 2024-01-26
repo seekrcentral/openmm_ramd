@@ -117,20 +117,18 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=10,
             print(f"num trajectories in bin {i}: {len(xi_bin.trajs)}")
         assert len(xi_bin.trajs) > 0, "All angle bins need trajectories. "\
             "Either run more simulations or decrease the number of angle bins."
-        count_matrix, time_vector, time_vector_up, time_vector_down, \
-            avg_time_vector, avg_time_vector_up, avg_time_vector_down \
-            = milestoning.make_milestoning_model(
+        count_matrix, time_vector, time_matrix, avg_time_vector, \
+            avg_time_matrix = milestoning.make_milestoning_model(
                 xi_bin.trajs, milestones, frame_time, num_milestones,
                 remove_unbalanced_frame_counts=cut_out_drift)
         
         if verbose:
-            print(f"count_matrix {i}:")
             print(count_matrix)
             print(f"time_vector {i}:")
             print(time_vector)
         
         xi_bin.assign_main_data_sample(
-            count_matrix, time_vector, avg_time_vector)
+            count_matrix, time_vector, avg_time_vector, avg_time_matrix)
         xi_bin.make_profiles(starting_index, wrap_sink=False, 
                                      unitless_beta=unitless_beta)
         xi_bin.unslant_data_samples(forceRAMD, beta)

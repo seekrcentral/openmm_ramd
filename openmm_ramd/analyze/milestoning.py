@@ -28,8 +28,6 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
             if cv_val > max_location:
                 max_location = cv_val
                 
-            
-    
     assert min_location < max_location, \
         "The minimum must be less than the maximum."
     
@@ -57,11 +55,11 @@ def make_milestoning_model(
     frame_time = float(frame_time)
     count_matrix = np.zeros((num_milestones, num_milestones), dtype=np.int32)
     time_vector = np.zeros((num_milestones, 1))
-    time_vector_up = np.zeros((num_milestones, 1))
-    time_vector_down = np.zeros((num_milestones, 1))
+    time_matrix = np.zeros((num_milestones, num_milestones))
+    #time_vector_up = np.zeros((num_milestones, 1))
+    #time_vector_down = np.zeros((num_milestones, 1))
     avg_time_vector = np.zeros((num_milestones, 1))
-    avg_time_vector_up = np.zeros((num_milestones, 1))
-    avg_time_vector_down = np.zeros((num_milestones, 1))
+    avg_time_matrix = np.zeros((num_milestones, num_milestones))
     
     for i, traj in enumerate(xi_bin_trajs):
         src_milestone = None
@@ -90,7 +88,6 @@ def make_milestoning_model(
                 dest_milestone = new_cell_id - (diff + 1) // 2
                 if src_milestone != dest_milestone:
                     if src_milestone is not None:
-                        assert src_milestone != dest_milestone
                         if first_milestone is None:
                             first_milestone = src_milestone
                             
@@ -99,16 +96,20 @@ def make_milestoning_model(
                             first_transition[dest_milestone] = src_milestone
                             
                         count_matrix[dest_milestone, src_milestone] += 1
+                        if j < len(traj)-1:
+                            time_matrix[dest_milestone, src_milestone] += src_time
                         
                     src_milestone = dest_milestone
                     src_time = 0.0
                     
             if src_milestone is not None and j < len(traj)-1:
                 time_vector[src_milestone, 0] += frame_time
-                if cv_val > milestones[src_milestone]:
-                    time_vector_up[src_milestone, 0] += frame_time
-                else:
-                    time_vector_down[src_milestone, 0] += frame_time
+                #if cv_val > milestones[src_milestone]:
+                #    time_vector_up[src_milestone, 0] += frame_time
+                #else:
+                #    time_vector_down[src_milestone, 0] += frame_time
+            
+        time_matrix[src_milestone-1,src_milestone] += src_time
         
         # If we are removing the unmatched counts/times, then do so
         if remove_unbalanced_frame_counts:
@@ -136,19 +137,16 @@ def make_milestoning_model(
         column_sum = np.sum(count_matrix[:,i])
         if column_sum > 0.0:
             avg_time_vector[i, 0] = time_vector[i, 0] / column_sum
-        column_sum_up = np.sum(count_matrix[i+1:,i])
-        if column_sum_up > 0.0:
-            avg_time_vector_up[i, 0] = time_vector_up[i, 0] / column_sum_up
-        column_sum_down = np.sum(count_matrix[:i,i])
-        if column_sum_down > 0.0:
-            avg_time_vector_down[i, 0] = time_vector_down[i, 0] / column_sum_down
+        for j in range(num_milestones):
+            if count_matrix[j,i] > 0.0:
+                avg_time_matrix[j, i] = time_matrix[j, i] / count_matrix[j,i]
                 
     #avg_time_vector[0, 0] *= 0.5 # times need to be cut in half for end states
     #avg_time_vector_up[0, 0] *= 0.5
     #avg_time_vector_down[0, 0] *= 0.5
     
-    return count_matrix, time_vector, time_vector_up, time_vector_down, \
-        avg_time_vector, avg_time_vector_up, avg_time_vector_down
+    return count_matrix, time_vector, time_matrix, avg_time_vector, \
+        avg_time_matrix
 
 def make_transition_matrix(num_milestones, count_matrix):
     transition_matrix = np.zeros((num_milestones, num_milestones))
