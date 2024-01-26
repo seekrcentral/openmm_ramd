@@ -109,7 +109,8 @@ def make_milestoning_model(
                 #else:
                 #    time_vector_down[src_milestone, 0] += frame_time
             
-        time_matrix[src_milestone-1,src_milestone] += src_time
+        if src_milestone is not None:
+            time_matrix[src_milestone-1,src_milestone] += src_time
         
         # If we are removing the unmatched counts/times, then do so
         if remove_unbalanced_frame_counts:
