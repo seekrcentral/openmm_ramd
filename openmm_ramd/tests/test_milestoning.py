@@ -12,9 +12,10 @@ def test_uniform_milestone_locations(small_linear_logfile_persistent):
     num_milestones = 10
     [trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations,
      temperature, maxDist] = small_linear_logfile_persistent
-    one_dim_trajs = parser.condense_trajectories(trajectories, onlyZ=True)
-    milestones, min_location, max_location, starting_cv_val, starting_index, h \
-        = milestoning.uniform_milestone_locations(
+    one_dim_trajs = parser.condense_trajectories(trajectories, maxDist, 
+                                                 onlyZ=True)
+    milestones, min_location, max_location, starting_cv_val, starting_index, h,\
+        situation = milestoning.uniform_milestone_locations(
             one_dim_trajs, num_milestones, maxDist)
     cv_vals = []
     for one_dim_traj in one_dim_trajs:
@@ -41,8 +42,8 @@ def test_make_milestoning_model_simple():
          [3.0, 0.0], [3.0, 0.0], [1.0, 0.0]]
     ]
     
-    count_matrix, time_vector, time_vector_up, time_vector_down, \
-        avg_time_vector, avg_time_vector_up, avg_time_vector_down, \
+    count_matrix, time_vector, time_matrix, avg_time_vector, \
+        avg_time_matrix \
             = milestoning.make_milestoning_model(
             xi_bin_trajs, milestones, frame_time, num_milestones)
     true_count_matrix = np.array(
@@ -59,7 +60,6 @@ def test_make_milestoning_model_simple():
     #    [150.0],
     #    [0.0]])
     assert np.isclose(time_vector, true_time_vector).all()
-    assert np.isclose(time_vector_up + time_vector_down, true_time_vector).all()
     #true_transition_matrix = np.array(
     #    [[0, 0.75, 0],
     #     [1.0, 0, 1.0],
@@ -93,7 +93,8 @@ def test_compute_stationary_probabilities_linear():
         time_vector[i, 0] = t
     
     stationary_probs = milestoning.compute_stationary_probabilities(
-        transition_matrix, time_vector, num_milestones, start_index=0)
+        transition_matrix, time_vector, num_milestones, start_index=0, 
+        situation=1)
     return
     
 def test_compute_diffusion_coefficients():

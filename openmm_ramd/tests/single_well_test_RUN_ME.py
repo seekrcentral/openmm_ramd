@@ -42,6 +42,8 @@ WELL_DEPTH = 7.0 # * 4.184
 force_magnitude = 2.0 #5.0
 
 MODE = 1
+SITUATION = 1
+BULK_MILESTONES = [num_milestones - 1]
 
 def potential_energy_flat(z, force_constant, start=0.0, u=None):
     """
@@ -338,7 +340,7 @@ if __name__ == "__main__":
     bulk_milestone = num_milestones - 1
     
     #xi_bins, xi_values, xi_bins_ranges = analyze_log.make_xi_bins(num_xi_bins)
-    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones, MODE)
+    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones, SITUATION, MODE)
     
     unslanted_energy_profiles = np.zeros((num_xi_bins, num_milestones))
     diffusion_profiles = np.zeros((num_xi_bins, num_milestones))
@@ -397,13 +399,15 @@ if __name__ == "__main__":
     #plt.ylim((-0, 2.0))
     #plt.show()
     
-    analysis = samples.Analysis(num_milestones, milestones, h_z)
+    bulk_milestones = [bulk_milestone]
+    
+    analysis = samples.Analysis(num_milestones, milestones, h_z, SITUATION, bulk_milestones)
     analysis.avg_unslanted_xi_bins(xi_bins)
     analysis.make_profiles(start_milestone_index, wrap_sink=False, 
                            unitless_beta=beta)
     
     # DEBUG
-    analysis.make_times(start_milestone_index, bulk_milestone)
+    analysis.make_times(start_milestone_index)
     
     print("original time:", time1, "ps")
     

@@ -10,10 +10,12 @@ import numpy as np
 MATRIX_EXPONENTIAL = 9999999999
 DEFAULT_DIFFUSION_COEFF = 1.0
 
-def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
+def uniform_milestone_locations(one_dim_trajs, num_milestones, max_dist):
     """
     Define a set of milestone locations uniformly spread.
     """
+    max_dist_factor = 0.9
+    outer_edge = max_dist * max_dist_factor
     # First, locate the minimum and maximum positions along the CV
     min_location = 9e9
     max_location = -9e9
@@ -33,11 +35,38 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
     
     assert starting_cv_val is not None, "No starting CV value found."
     
-    min_max_distance = maxDist - min_location
-    start_point_index = int((starting_cv_val - min_location) * (num_milestones - 1) / min_max_distance)
+    # There are 3 possible values for "situation":
+    # 1. a forward exit (where max_location is close to max_dist
+    # 2. a backward exit (where min_location is close to max_dist
+    # 3. a two-path exit (where both min_location and max_location are close to
+    #  max_dist
+    if min_location > -outer_edge:
+        # a forward exit
+        situation = 1
+        min_max_distance = outer_edge - min_location
+        start_point_index = int((starting_cv_val - min_location) * (num_milestones - 1) / min_max_distance)
+        
+    elif max_location < outer_edge:
+        # a backward exit
+        situation = 2
+        min_max_distance = max_location + outer_edge
+        start_point_index = int((starting_cv_val + outer_edge) * (num_milestones - 1) / min_max_distance) + 1
+        
+    else:
+        # a two-way exit
+        situation = 3
+        min_max_distance = 2.0 * outer_edge
+        start_point_index = int((starting_cv_val + outer_edge) * (num_milestones - 1) / min_max_distance)
+    
     num_points_after = num_milestones - start_point_index - 1
     num_points_before = num_milestones - num_points_after - 1
-    h = (maxDist - starting_cv_val) / num_points_after
+    if situation == 1:
+        h = (outer_edge - starting_cv_val) / num_points_after
+    elif situation == 2:
+        h = (outer_edge + starting_cv_val) / num_points_before
+    else: # situation == 3
+        h = (outer_edge - starting_cv_val) / num_points_after
+        
     first_milestone_location = starting_cv_val - num_points_before * h
     milestones = []
     
@@ -46,7 +75,7 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, maxDist):
         milestones.append(milestone)
     
     return milestones, min_location, max_location, starting_cv_val, \
-        start_point_index, h
+        start_point_index, h, situation
     
 def make_milestoning_model(
         xi_bin_trajs, milestones, frame_time, num_milestones,
@@ -176,29 +205,46 @@ def make_rate_matrix(num_milestones, transition_matrix, avg_time_vector):
     return rate_matrix
 
 def compute_stationary_probabilities(transition_matrix, avg_time_vector, 
-                                     num_milestones, start_index, 
+                                     num_milestones, start_index, situation,
                                      wrap_sink=True):
-    
     TINY_PROB = 1e-6
     #initial_prob_vector = np.zeros((1, num_milestones))
     #initial_prob_vector[0,0] = 1.0
     initial_prob_vector = np.ones((1, num_milestones))
     
-    transition_matrix_with_leak = np.copy(transition_matrix)
-    if transition_matrix_with_leak[-2, -1] < TINY_PROB:
-        transition_matrix_with_leak[-2, -1] = 1.0
-        avg_time_vector[-1, 0] = avg_time_vector[-2, 0]
-    
-    transition_matrix_with_leak[-1, -1] += TINY_PROB
-    transition_matrix_with_leak[-2, -1] -= TINY_PROB
-    
-    if wrap_sink:
-        transition_matrix_with_leak[:, -1] = 0.0
-        transition_matrix_with_leak[start_index, -1] = 1.0
-    
-    if transition_matrix_with_leak[1, 0] > TINY_PROB:
+    if (situation == 1) or (situation == 3):
+        transition_matrix_with_leak = np.copy(transition_matrix)
+        if transition_matrix_with_leak[-2, -1] < TINY_PROB:
+            transition_matrix_with_leak[-2, -1] = 1.0
+            avg_time_vector[-1, 0] = avg_time_vector[-2, 0]
+        
+        transition_matrix_with_leak[-1, -1] += TINY_PROB
+        transition_matrix_with_leak[-2, -1] -= TINY_PROB
+        if wrap_sink:
+            transition_matrix_with_leak[:, -1] = 0.0
+            transition_matrix_with_leak[start_index, -1] = 1.0
+            
+    if (situation == 2) or (situation == 3):
+        transition_matrix_with_leak = np.copy(transition_matrix)
+        if transition_matrix_with_leak[1, 0] < TINY_PROB:
+            transition_matrix_with_leak[1, 0] = 1.0
+            avg_time_vector[0, 0] = avg_time_vector[1, 0]
+        
         transition_matrix_with_leak[0, 0] += TINY_PROB
         transition_matrix_with_leak[1, 0] -= TINY_PROB
+        if wrap_sink:
+            transition_matrix_with_leak[:, 0] = 0.0
+            transition_matrix_with_leak[start_index, 0] = 1.0
+    
+    if situation == 1:
+        if transition_matrix_with_leak[1, 0] > TINY_PROB:
+            transition_matrix_with_leak[0, 0] += TINY_PROB
+            transition_matrix_with_leak[1, 0] -= TINY_PROB
+    
+    elif situation == 2:
+        if transition_matrix_with_leak[-2, -1] > TINY_PROB:
+            transition_matrix_with_leak[-1, -1] += TINY_PROB
+            transition_matrix_with_leak[-2, -1] -= TINY_PROB
     
     for i in range(1, num_milestones-1):
         if (transition_matrix_with_leak[i-1, i] > TINY_PROB) \
@@ -228,6 +274,7 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
     if sum_p_i > 0.0:
         for i in range(num_milestones):
             p_i[i] /= sum_p_i
+    
     return p_i
 
 def compute_diffusion_coefficients(rate_matrix, num_milestones, milestone_spacing):

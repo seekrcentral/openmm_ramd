@@ -56,7 +56,8 @@ def test_parse_ramd_log_file_large(large_linear_logfile_persistent):
 def test_condense_trajectories(small_linear_logfile_persistent):
     [trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations,
      temperature, maxDist] = small_linear_logfile_persistent
-    one_dim_trajs = parser.condense_trajectories(trajectories, onlyZ=True)
+    one_dim_trajs = parser.condense_trajectories(trajectories, maxDist, 
+                                                 onlyZ=True)
     for trajectory, one_dim_traj in zip(trajectories, one_dim_trajs):
         for frame, one_dim_frame in zip(trajectory, one_dim_traj):
             assert frame[2] == one_dim_frame[0]

@@ -37,7 +37,7 @@ class Xi_bin():
     
     """
     def __init__(self, num_milestones, milestones, lowest_boundary, midpoint, 
-                 highest_boundary, mode=1):
+                 highest_boundary, situation, mode=1):
         self.num_milestones = num_milestones
         self.milestones = milestones
         self.lowest_boundary = lowest_boundary
@@ -47,6 +47,7 @@ class Xi_bin():
         self.main_data_sample = None
         self.main_data_sample_unslanted = None
         self.counts = None
+        self.situation = situation
         self.mode = mode
         return
     
@@ -69,8 +70,8 @@ class Xi_bin():
         if data_sample is None:
             data_sample = self.main_data_sample
         data_sample.p_i = milestoning.compute_stationary_probabilities(
-            data_sample.K, data_sample.t, 
-            self.num_milestones, starting_index, wrap_sink=wrap_sink)
+            data_sample.K, data_sample.t, self.num_milestones, 
+            starting_index, self.situation, wrap_sink=wrap_sink)
         data_sample.free_energy_profile = remove_slant.make_energy_profile(
             data_sample.p_i, unitless_beta, starting_index)
         data_sample.diffusion_profile = milestoning.compute_diffusion_coefficients(
@@ -131,7 +132,8 @@ class Analysis:
     """
     
     """
-    def __init__(self, num_milestones, milestones, h):
+    def __init__(self, num_milestones, milestones, h, situation, 
+                 bulk_milestones):
         self.num_milestones = num_milestones
         self.milestones = milestones
         self.main_data_sample = None
@@ -142,12 +144,16 @@ class Analysis:
         self.free_energy_profile_err = None
         self.diffusion_profile = None
         self.diffusion_profile_err = None
+        self.bulk_milestones = bulk_milestones
+        self.MFPTs_per_bulk = None
+        self.MFPTs_per_bulk_err = None
         self.MFPT = None
         self.MFPT_error = None
         self.k_off = None
         self.k_off_error = None
         self.h = h
         self.num_error_samples = 0
+        self.situation = situation
         return
     
     def avg_unslanted_xi_bins(self, xi_bins):
@@ -207,7 +213,8 @@ class Analysis:
     def make_profiles(self, starting_index, wrap_sink, unitless_beta):
         self.p_i = milestoning.compute_stationary_probabilities(
             self.main_data_sample.K, self.main_data_sample.t, 
-            self.num_milestones, starting_index, wrap_sink=wrap_sink)
+            self.num_milestones, starting_index, self.situation, 
+            wrap_sink=wrap_sink)
         self.free_energy_profile = remove_slant.make_energy_profile(
             self.p_i, unitless_beta, starting_index)
         self.diffusion_profile = milestoning.compute_diffusion_coefficients(
@@ -219,7 +226,7 @@ class Analysis:
             for k, data_sample in enumerate(self.data_samples):
                 p_i = milestoning.compute_stationary_probabilities(
                     data_sample.K, data_sample.t, self.num_milestones, 
-                    starting_index, wrap_sink=wrap_sink)
+                    starting_index, self.situation, wrap_sink=wrap_sink)
                 free_energy_profile = remove_slant.make_energy_profile(
                     p_i, unitless_beta, starting_index)
                 diffusion_profile = milestoning.compute_diffusion_coefficients(
@@ -252,17 +259,21 @@ class Analysis:
                 
         return
         
-    def make_times(self, starting_index, bulk_milestone):
+    def make_times(self, starting_index):
         # Recompute main diagonal
         for j in range(self.num_milestones):
             self.main_data_sample.Q[j, j] = 0.0
             self.main_data_sample.Q[j, j] = -sum(self.main_data_sample.Q[:,j])
         
         
-        time_estimate = compute_time(self.main_data_sample.Q, starting_index, 
-                                     bulk_milestone)
+        time_estimate, times = compute_time(self.main_data_sample.Q, 
+                                            starting_index, self.bulk_milestones)
         if self.num_error_samples > 0:
             time_estimate_list = []
+            time_estimate_list_per_bulk = []
+            for _ in range(len(times)):
+                time_estimate_list_per_bulk.append([])
+                
             k_off_list = []
             for k, data_sample in enumerate(self.data_samples):
                 tmp_float128 = data_sample.Q.astype(np.longdouble)
@@ -271,20 +282,34 @@ class Analysis:
                     data_sample.Q[j, j] = -sum(data_sample.Q[:,j])
                 
                 try:
-                    time_estimate_val = compute_time(
-                        tmp_float128, starting_index, bulk_milestone)
+                    time_estimate_val, times_val = compute_time(
+                        tmp_float128, starting_index, self.bulk_milestones)
                     time_estimate_list.append(float(time_estimate_val))
+                    for i in range(len(times)):
+                        time_estimate_list_per_bulk[i].append(times_val[i])
+                    
                     k_off_list.append(1.0 / time_estimate_val)
                 except AssertionError:
                     print(f"Unstable sampled error matrix in iteration {k}. Skipping")
                     continue
             
             time_estimate_err = np.std(time_estimate_list)
+            time_estimate_errs = []
+            for i in range(len(times)):
+                time_estimate_errs.append(np.std(time_estimate_list_per_bulk[i]))
+                
             k_off_err = np.std(k_off_list)
         else:
             time_estimate_err = np.inf
+            time_estimate_errs = []
+            for i in range(len(times)):
+                time_estimate_errs.append(np.inf)
+                
             k_off_err = np.inf
             
+        
+        self.MFPTs_per_bulk = times
+        self.MFPTs_per_bulk_err = time_estimate_errs
         self.MFPT = time_estimate
         self.MFPT_error = time_estimate_err
         self.k_off = 1.0 / time_estimate
@@ -293,6 +318,11 @@ class Analysis:
     
     def print_results(self):
         print("Printing results from RAMD analysis.")
+        if len(self.bulk_milestones) > 1:
+            for i, bulk_milestone in enumerate(self.bulk_milestones):
+                print(f"Time to bulk milestone {bulk_milestone} (ps):", 
+                      pretty_string_value_error(
+                self.MFPTs_per_bulk[i], self.MFPTs_per_bulk_err[i]))
         print("MFPT (ps):", pretty_string_value_error(
             self.MFPT, self.MFPT_error))
         print("k_off (1/ps):", pretty_string_value_error(
@@ -319,27 +349,33 @@ class Analysis:
         #pi_fig.savefig(os.path.join(image_directory, "profile.png"))
         plt.show()
         
-def make_xi_bins(num_xi_bins, num_milestones, milestones, mode):
+def make_xi_bins(num_xi_bins, num_milestones, milestones, situation, mode):
     xi_bins = []
     xi_bins_ranges = np.linspace(-1.0, 1.0, num_xi_bins+1)
     for j in range(num_xi_bins):
         midpoint = 0.5 * (xi_bins_ranges[j] + xi_bins_ranges[j+1])
         #xi_values.append(xi_value)
         xi_bin = Xi_bin(num_milestones, milestones, xi_bins_ranges[j], midpoint, 
-                        xi_bins_ranges[j+1], mode)
+                        xi_bins_ranges[j+1], situation, mode)
         xi_bins.append(xi_bin)
         
     return xi_bins
 
-def compute_time(rate_matrix, starting_index, bulk_milestone):
+def compute_time(rate_matrix, starting_index, bulk_milestones):
     #rate_matrix = remove_slant.milestoning_statistics_from_profiles(
     #    milestones, energy_profile_avg, diffusion_profile_avg, beta)
+    time_estimate_inv = 0.0
+    times = []
     B, tau = PyGT.tools.load_CTMC(rate_matrix)
-    mfpt_ij, mfpt_ji = PyGT.mfpt.compute_MFPT(
-                    starting_index, bulk_milestone, B, tau)
-    time_estimate = mfpt_ji
+    for bulk_milestone in bulk_milestones:
+        mfpt_ij, mfpt_ji = PyGT.mfpt.compute_MFPT(
+                        starting_index, bulk_milestone, B, tau)
+        mfpt_ji_inv = 1.0 / mfpt_ji
+        time_estimate_inv += mfpt_ji_inv
+        times.append(mfpt_ji)
         
-    return time_estimate
+    time_estimate = 1.0 / time_estimate_inv
+    return time_estimate, times
 
 def correct_rate_matrix_for_ramd(rate_matrix_avg):
     end_rate = rate_matrix_avg[-3, -2]

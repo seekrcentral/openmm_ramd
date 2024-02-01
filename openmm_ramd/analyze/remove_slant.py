@@ -48,9 +48,7 @@ def unslant_transition_matrix_constant_approx(
     unslanted_transition_matrix = np.zeros((num_milestones, num_milestones))
     unslanted_avg_time_vector = np.zeros((num_milestones, 1))
     unslanted_avg_time_matrix = np.zeros((num_milestones, num_milestones))
-    
-    KEEP_ORIGINAL_TIMES_DEBUG = False
-    
+        
     # i == 0
     unslanted_transition_matrix[:,0] = transition_matrix[:,0]
     span = milestones[1] - milestones[0]

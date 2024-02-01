@@ -60,7 +60,7 @@ def parse_ramd_log_file(ramd_log_filename):
     forceRAMD = None
     timeStep = None
     temperature = None
-    maxDist = None
+    max_dist = None
     old_ligand_step = None
     receptor_step = None
     accel_step = None
@@ -120,15 +120,15 @@ def parse_ramd_log_file(ramd_log_filename):
                 else:
                     temperature = temperature_
                     
-            maxDist_search = re.match("RAMD: maxDist * (\d+\.?\d*[eE]?[+-]?\d*)", line)
-            if maxDist_search:
-                maxDist_ = float(maxDist_search.group(1))
-                if maxDist is not None:
-                    assert maxDist == maxDist_, \
+            max_dist_search = re.match("RAMD: maxDist * (\d+\.?\d*[eE]?[+-]?\d*)", line)
+            if max_dist_search:
+                max_dist_ = float(max_dist_search.group(1))
+                if max_dist is not None:
+                    assert max_dist == max_dist_, \
                         "The log file may not have conflicting values of "\
                         "maxDist"
                 else:
-                    maxDist = maxDist_
+                    max_dist = max_dist_
             
             # Find the lines that indicate the ligand COM
             lig_com_search = re.match("RAMD FORCE: (\d+) > LIGAND COM IS: \[ *([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) *\]", line)
@@ -214,7 +214,7 @@ def parse_ramd_log_file(ramd_log_filename):
         "The variable timeStep was not assigned in the log file."
     
     return trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations, \
-        temperature, maxDist
+        temperature, max_dist
 
 def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
     """
@@ -276,6 +276,24 @@ def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
     
     return end_times, forceRAMD, timeStep
 
+# TODO: remove function
+def minimize_dot_product(trajectories):
+    data_matrix = np.zeros((3,3))
+    for i, trajectory in enumerate(trajectories):
+        for j, frame in enumerate(trajectory):
+            [ligx, ligy, ligz, accx, accy, accz] = frame
+            data_matrix[0,0] += ligx**2
+            data_matrix[0,1] += ligx*ligy
+            data_matrix[0,2] += ligx*ligz
+            data_matrix[1,0] += ligx*ligy
+            data_matrix[1,1] += ligy**2
+            data_matrix[1,2] += ligy*ligz
+            data_matrix[2,0] += ligx*ligz
+            data_matrix[2,1] += ligy*ligz
+            data_matrix[2,2] += ligz**2
+    
+    return np.linalg.solve(data_matrix, np.zeros((3,1)))
+
 def condense_trajectories(trajectories, max_dist, onlyZ=False):
     """
     Reduce trajectories to 1D, and compute xi values
@@ -294,8 +312,11 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False):
     # First, find the average position of all ligand positions, this will
     # define our 1D CV per trajectory
     CONDENSE_MODE = "lig_avg" # Can be "lig_avg" or "lig_vec"
-    
-    
+    # The cylinder settings are to avoid counting trajectory frames that have
+    #  exited the site and have found their way out and around the edges of the
+    #  receptor, which might contaminate lower milestones.
+    MUST_BE_WITHIN_CYLINDER = True
+    CYLINDER_MAX_RADIUS = 0.5 * max_dist
     sum_ligx = 0.0
     sum_ligy = 0.0
     sum_ligz = 0.0
@@ -303,25 +324,23 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False):
     start_accx = None
     #if len(trajectory) == 0:
     #    continue
-        
-    if CONDENSE_MODE == "lig_avg":
+    
+    if (CONDENSE_MODE == "lig_avg") and not onlyZ:
         for i, trajectory in enumerate(trajectories):
-            frame = trajectory[-1]
-            [ligx, ligy, ligz, accx, accy, accz] = frame
-            lig_length = np.sqrt(ligx**2 + ligy**2 + ligz**2)
-            if lig_length < max_dist - 0.1:
-                continue
+            for j, frame in enumerate(trajectory):
+                [ligx, ligy, ligz, accx, accy, accz] = frame
+                #lig_length = np.sqrt(ligx**2 + ligy**2 + ligz**2)
                 
-            sum_ligx += ligx
-            sum_ligy += ligy
-            sum_ligz += ligz
-            total_points += 1
-            if start_accx is None:
-                start_accx = accx
-            else:
-                #assert start_accx == accx, \
-                #    "Every frame must have the same acceleration vector"
-                pass
+                sum_ligx += ligx
+                sum_ligy += ligy
+                sum_ligz += ligz
+                total_points += 1
+                if start_accx is None:
+                    start_accx = accx
+                else:
+                    #assert start_accx == accx, \
+                    #    "Every frame must have the same acceleration vector"
+                    pass
         
         assert total_points > 0, "No trajectories detected."
         
@@ -332,7 +351,8 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False):
         norm_avgx = avg_ligx / avg_lig_length
         norm_avgy = avg_ligy / avg_lig_length
         norm_avgz = avg_ligz / avg_lig_length
-    
+        norm_avg_vec = np.array([norm_avgx, norm_avgy, norm_avgz])
+        
     one_dim_trajs = []
     for i, trajectory in enumerate(trajectories):
         one_dim_traj = []
@@ -344,10 +364,19 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False):
                 xi_val = accz
             else:
                 if CONDENSE_MODE == "lig_avg":
-                    #cv_val = (ligx*norm_avgx + ligy*norm_avgy + ligz*norm_avgz)
-                    cv_val = np.sqrt(ligx*ligx + ligy*ligy + ligz*ligz)
+                    cv_val = (ligx*norm_avgx + ligy*norm_avgy + ligz*norm_avgz)
+                    #cv_val = np.sqrt(ligx*ligx + ligy*ligy + ligz*ligz)
                     # dot product between frame acc and avg_lig
                     xi_val = (accx*norm_avgx + accy*norm_avgy + accz*norm_avgz)
+                    if MUST_BE_WITHIN_CYLINDER:
+                        lig_vec = np.array([ligx, ligy, ligz])
+                        projection_vec = norm_avg_vec * np.dot(norm_avg_vec, lig_vec)
+                        radial_vec = lig_vec - projection_vec
+                        if np.linalg.norm(radial_vec) > CYLINDER_MAX_RADIUS:
+                            # If the frame goes outside of the encompassing 
+                            # cylinder, then simply end this trajectory
+                            break
+                    
                 elif CONDENSE_MODE == "lig_vec":
                     cv_val = np.sqrt(ligx*ligx + ligy*ligy + ligz*ligz)
                     norm_ligx = ligx / cv_val
@@ -358,7 +387,6 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False):
                     raise Exception(f"Method not implemented: {CONDENSE_MODE}")
             one_dim_traj.append([cv_val, xi_val])
             
-        
         one_dim_trajs.append(one_dim_traj)
-        
+    
     return one_dim_trajs

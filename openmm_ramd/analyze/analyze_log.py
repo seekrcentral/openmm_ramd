@@ -80,17 +80,25 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=10,
         trajectory_list, max_dist, onlyZ=toy_mode)
         
     #Construct a milestoning model based on trajectory fragments
-    milestones, min_location, max_location, starting_cv_val, starting_index, h \
-        = milestoning.uniform_milestone_locations(one_dim_trajs, num_milestones,
-                                                  max_dist)
-    bulk_milestone = num_milestones - 1
+    milestones, min_location, max_location, starting_cv_val, starting_index, h,\
+        situation = milestoning.uniform_milestone_locations(
+            one_dim_trajs, num_milestones, max_dist)
+    if situation == 1:
+        # a forward exit (parallel to CV)
+        bulk_milestones = [num_milestones - 1]
+    elif situation == 2:
+        # a backward exit (antiparallel to CV)
+        bulk_milestones = [0]
+    else:
+        bulk_milestones = [0, num_milestones - 1]
+        
     if verbose:
         np.set_printoptions(precision=3)
         print("milestones:", np.array(milestones), "h:", f"{h:.3f} (A)")
         print("starting_index:", starting_index)
     
     xi_bins = samples.make_xi_bins(
-        num_xi_bins, num_milestones, milestones, mode)
+        num_xi_bins, num_milestones, milestones, situation, mode)
     for i, trajectory in enumerate(one_dim_trajs):
         if len(trajectory) == 0:
             continue
@@ -123,6 +131,7 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=10,
                 remove_unbalanced_frame_counts=cut_out_drift)
         
         if verbose:
+            print(f"count_matrix {i}:")
             print(count_matrix)
             print(f"time_vector {i}:")
             print(time_vector)
@@ -137,14 +146,15 @@ def analyze_log(ramd_log_file_list, num_milestones=10, num_xi_bins=10,
                              unitless_beta=unitless_beta, 
                              data_sample=xi_bin.main_data_sample_unslanted)
     
-    analysis = samples.Analysis(num_milestones, milestones, h)
+    analysis = samples.Analysis(num_milestones, milestones, h, situation, 
+                                bulk_milestones)
     analysis.avg_unslanted_xi_bins(xi_bins)
     if num_error_samples > 0:
         analysis.sample_error_matrices(
             num_error_samples, stride_error_samples, skip_error_samples)
     analysis.make_profiles(starting_index, wrap_sink=False, 
                            unitless_beta=unitless_beta)
-    analysis.make_times(starting_index, bulk_milestone)
+    analysis.make_times(starting_index)
     return analysis
 
 # TODO: add Torque balancing in the RAMD.

@@ -134,7 +134,9 @@ def get_indices_ligand(pdb_filename, lig_resname):
     return atom_indices
 
 def impose_receptor_restraints(system, positions, force_constant, indices):
-    restraint_expr = "0.5*k*((x-x0)^2+(y-y0)^2+(z-z0)^2)"
+    # Caused numerical instability
+    #restraint_expr = "0.5*k*((x-x0)^2+(y-y0)^2+(z-z0)^2)"
+    restraint_expr = "0.5*k*periodicdistance(x, y, z, x0, y0, z0)^2"
     force = openmm.CustomExternalForce(restraint_expr)
     force.addGlobalParameter("k", force_constant)
     force.addPerParticleParameter("x0")
