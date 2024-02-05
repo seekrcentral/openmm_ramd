@@ -294,6 +294,82 @@ def minimize_dot_product(trajectories):
     
     return np.linalg.solve(data_matrix, np.zeros((3,1)))
 
+# TODO: marked for removal
+def get_cv_vec_traj_avg(trajectories):
+    """
+    This method doesn't tend to work well. MARKED FOR REMOVAL
+    """
+    sum_ligx = 0.0
+    sum_ligy = 0.0
+    sum_ligz = 0.0
+    total_points = 0
+    start_accx = None
+    for i, trajectory in enumerate(trajectories):
+        for j, frame in enumerate(trajectory):
+            [ligx, ligy, ligz, accx, accy, accz] = frame
+            #lig_length = np.sqrt(ligx**2 + ligy**2 + ligz**2)
+            
+            sum_ligx += ligx
+            sum_ligy += ligy
+            sum_ligz += ligz
+            total_points += 1
+            if start_accx is None:
+                start_accx = accx
+            else:
+                #assert start_accx == accx, \
+                #    "Every frame must have the same acceleration vector"
+                pass
+    
+    assert total_points > 0, "No trajectories detected."
+    
+    avg_ligx = sum_ligx / total_points
+    avg_ligy = sum_ligy / total_points
+    avg_ligz = sum_ligz / total_points
+    avg_lig_length = np.sqrt(avg_ligx**2 + avg_ligy**2 + avg_ligz**2)
+    norm_avgx = avg_ligx / avg_lig_length
+    norm_avgy = avg_ligy / avg_lig_length
+    norm_avgz = avg_ligz / avg_lig_length
+    norm_avg_vec = np.array([norm_avgx, norm_avgy, norm_avgz])
+    return norm_avg_vec
+
+def get_cv_vec_principal_component(trajectories):
+    """
+    
+    """
+    n = 0
+    for trajectory in trajectories:
+        n += len(trajectory)
+    data_matrix = np.zeros((3,n))
+    counter = 0
+    # We are not centering the data - we want starting position to be the
+    #  origin
+    for i, trajectory in enumerate(trajectories):
+        for j, frame in enumerate(trajectory):
+            [ligx, ligy, ligz, accx, accy, accz] = frame
+            data_matrix[0,counter] = ligx
+            data_matrix[1,counter] = ligy
+            data_matrix[2,counter] = ligz
+            counter += 1
+            
+    mean = np.mean(data_matrix, axis=1)
+    cov = np.cov(data_matrix)
+    eig_val, eig_vec = np.linalg.eig(cov)
+    # Sort the e-vals and find e-vec with highest e-val
+    indices = np.arange(0, len(eig_val), 1)
+    indices = ([x for _, x in sorted(zip(eig_val, indices))])[::-1]
+    eig_val = eig_val[indices]
+    eig_vec = eig_vec[:,indices]
+    norm_avg_vec = np.zeros(3)
+    if np.dot(eig_vec[:,0], mean) > 0.0:
+        norm_avg_vec[0] = eig_vec[0,0]
+        norm_avg_vec[1] = eig_vec[1,0]
+        norm_avg_vec[2] = eig_vec[2,0]
+    else:
+        norm_avg_vec[0] = -eig_vec[0,0]
+        norm_avg_vec[1] = -eig_vec[1,0]
+        norm_avg_vec[2] = -eig_vec[2,0]
+    return norm_avg_vec
+
 def condense_trajectories(trajectories, max_dist, onlyZ=False):
     """
     Reduce trajectories to 1D, and compute xi values
@@ -311,48 +387,24 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False):
     """
     # First, find the average position of all ligand positions, this will
     # define our 1D CV per trajectory
-    CONDENSE_MODE = "lig_avg" # Can be "lig_avg" or "lig_vec"
+    CONDENSE_MODE = "prin_comp" # Can be "prin_comp", "lig_avg" or "lig_vec"
     # The cylinder settings are to avoid counting trajectory frames that have
     #  exited the site and have found their way out and around the edges of the
     #  receptor, which might contaminate lower milestones.
     MUST_BE_WITHIN_CYLINDER = True
     CYLINDER_MAX_RADIUS = 0.5 * max_dist
-    sum_ligx = 0.0
-    sum_ligy = 0.0
-    sum_ligz = 0.0
-    total_points = 0
-    start_accx = None
     #if len(trajectory) == 0:
     #    continue
     
     if (CONDENSE_MODE == "lig_avg") and not onlyZ:
-        for i, trajectory in enumerate(trajectories):
-            for j, frame in enumerate(trajectory):
-                [ligx, ligy, ligz, accx, accy, accz] = frame
-                #lig_length = np.sqrt(ligx**2 + ligy**2 + ligz**2)
-                
-                sum_ligx += ligx
-                sum_ligy += ligy
-                sum_ligz += ligz
-                total_points += 1
-                if start_accx is None:
-                    start_accx = accx
-                else:
-                    #assert start_accx == accx, \
-                    #    "Every frame must have the same acceleration vector"
-                    pass
-        
-        assert total_points > 0, "No trajectories detected."
-        
-        avg_ligx = sum_ligx / total_points
-        avg_ligy = sum_ligy / total_points
-        avg_ligz = sum_ligz / total_points
-        avg_lig_length = np.sqrt(avg_ligx**2 + avg_ligy**2 + avg_ligz**2)
-        norm_avgx = avg_ligx / avg_lig_length
-        norm_avgy = avg_ligy / avg_lig_length
-        norm_avgz = avg_ligz / avg_lig_length
-        norm_avg_vec = np.array([norm_avgx, norm_avgy, norm_avgz])
-        
+        norm_avg_vec = get_cv_vec_traj_avg(trajectories)
+    elif (CONDENSE_MODE == "prin_comp") and not onlyZ:
+        norm_avg_vec = get_cv_vec_principal_component(trajectories)
+    
+    norm_avgx = norm_avg_vec[0]
+    norm_avgy = norm_avg_vec[1]
+    norm_avgz = norm_avg_vec[2]
+    
     one_dim_trajs = []
     for i, trajectory in enumerate(trajectories):
         one_dim_traj = []
@@ -363,7 +415,7 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False):
                 cv_val = ligz
                 xi_val = accz
             else:
-                if CONDENSE_MODE == "lig_avg":
+                if CONDENSE_MODE in ["lig_avg", "prin_comp"]:
                     cv_val = (ligx*norm_avgx + ligy*norm_avgy + ligz*norm_avgz)
                     #cv_val = np.sqrt(ligx*ligx + ligy*ligy + ligz*ligz)
                     # dot product between frame acc and avg_lig
