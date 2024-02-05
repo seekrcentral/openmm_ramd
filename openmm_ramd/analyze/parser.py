@@ -398,12 +398,14 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False):
     
     if (CONDENSE_MODE == "lig_avg") and not onlyZ:
         norm_avg_vec = get_cv_vec_traj_avg(trajectories)
+        norm_avgx = norm_avg_vec[0]
+        norm_avgy = norm_avg_vec[1]
+        norm_avgz = norm_avg_vec[2]
     elif (CONDENSE_MODE == "prin_comp") and not onlyZ:
         norm_avg_vec = get_cv_vec_principal_component(trajectories)
-    
-    norm_avgx = norm_avg_vec[0]
-    norm_avgy = norm_avg_vec[1]
-    norm_avgz = norm_avg_vec[2]
+        norm_avgx = norm_avg_vec[0]
+        norm_avgy = norm_avg_vec[1]
+        norm_avgz = norm_avg_vec[2]
     
     one_dim_trajs = []
     for i, trajectory in enumerate(trajectories):
