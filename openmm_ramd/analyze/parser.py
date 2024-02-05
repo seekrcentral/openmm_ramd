@@ -332,7 +332,24 @@ def get_cv_vec_traj_avg(trajectories):
     norm_avg_vec = np.array([norm_avgx, norm_avgy, norm_avgz])
     return norm_avg_vec
 
-def get_cv_vec_principal_component(trajectories):
+def get_mean_vec_for_frames_greater_than_boundary(trajectories, boundary):
+    sum_vec = np.zeros(3)
+    counter = 0
+    for i, trajectory in enumerate(trajectories):
+        for j, frame in enumerate(trajectory):
+            [ligx, ligy, ligz, accx, accy, accz] = frame
+            lig_dist_sq = ligx**2 + ligy**2 + ligz**2
+            if lig_dist_sq < boundary**2:
+                # Skip all frames too far into the site
+                continue
+            sum_vec[0] = ligx
+            sum_vec[1] = ligy
+            sum_vec[2] = ligz
+            counter += 1
+    mean_vec = sum_vec / counter
+    return mean_vec
+
+def get_cv_vec_principal_component(trajectories, mean_vec=None):
     """
     
     """
@@ -350,8 +367,9 @@ def get_cv_vec_principal_component(trajectories):
             data_matrix[1,counter] = ligy
             data_matrix[2,counter] = ligz
             counter += 1
-            
-    mean = np.mean(data_matrix, axis=1)
+    
+    if mean_vec is None:
+        mean_vec = np.mean(data_matrix, axis=1)
     cov = np.cov(data_matrix)
     eig_val, eig_vec = np.linalg.eig(cov)
     # Sort the e-vals and find e-vec with highest e-val
@@ -360,7 +378,7 @@ def get_cv_vec_principal_component(trajectories):
     eig_val = eig_val[indices]
     eig_vec = eig_vec[:,indices]
     norm_avg_vec = np.zeros(3)
-    if np.dot(eig_vec[:,0], mean) > 0.0:
+    if np.dot(eig_vec[:,0], mean_vec) > 0.0:
         norm_avg_vec[0] = eig_vec[0,0]
         norm_avg_vec[1] = eig_vec[1,0]
         norm_avg_vec[2] = eig_vec[2,0]
@@ -402,7 +420,10 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False):
         norm_avgy = norm_avg_vec[1]
         norm_avgz = norm_avg_vec[2]
     elif (CONDENSE_MODE == "prin_comp") and not onlyZ:
-        norm_avg_vec = get_cv_vec_principal_component(trajectories)
+        boundary = 0.5 * max_dist
+        mean_vec = get_mean_vec_for_frames_greater_than_boundary(
+            trajectories, boundary)
+        norm_avg_vec = get_cv_vec_principal_component(trajectories, mean_vec)
         norm_avgx = norm_avg_vec[0]
         norm_avgy = norm_avg_vec[1]
         norm_avgz = norm_avg_vec[2]
