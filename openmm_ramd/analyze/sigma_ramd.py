@@ -1,259 +1,226 @@
 """
-Run a sigma-RAMD calculation on the time profile data generated from
-a RAMD log file, or perhaps some other means.
+analyze_log.py
+
+Read and parse a RAMD log file. Construct a series of milestoning models from 
+the trajectory fragments for a set of bins of RAMD force vectors. The 
+information from the milestoning models will be used in a sigma-RAMD model
+that will allow one to expand the residence time in a Taylor series expansion
+according to sigma-RAMD theory.
 """
 
+import argparse
+
 import numpy as np
-import scipy.integrate as sp_int
-import matplotlib.pyplot as plt
+from openmm import unit
 
-def midpoint_Riemann(data, dx):
-    return dx * np.sum(data)
+import openmm_ramd.analyze.modules.parser as parser
+import openmm_ramd.analyze.modules.samples as samples
+import openmm_ramd.analyze.modules.milestoning as milestoning
 
-class functional_expansion_1d_ramd():
-    def __init__(self, xi_bin_time_profiles, xi_bin_times, force_constant, beta, 
-                 min_cv_val, max_cv_val, starting_cv_val):
-        self.xi_bin_time_profiles = xi_bin_time_profiles
-        [num_xi_bins, num_milestones, dummy] = xi_bin_time_profiles.shape
-        self.xi_bin_times = xi_bin_times
-        #self.num_milestones = num_milestones
-        self.n = num_milestones
-        self.n_xi = num_xi_bins
-        self.A = force_constant
-        self.beta = beta
-        self.a = min_cv_val
-        self.b = starting_cv_val
-        self.c = max_cv_val
-        self.h_z = (self.c - self.a) / (self.n-1)
-        self.xi_a = -1.0
-        self.xi_b = 1.0
-        self.xi_span = self.xi_b - self.xi_a
-        self.h_xi = self.xi_span / (self.n_xi)
-        self.z_s = np.linspace(self.a, self.c, self.n)
-        xi_bins = np.linspace(self.xi_a, self.xi_b, self.n_xi+1)
-        self.xi_s = np.zeros(self.n_xi)
-        for i in range(self.n_xi):
-            self.xi_s[i] = 0.5*(xi_bins[i] + xi_bins[i+1])
-        return
+A_per_nm = 10.0
+
+def sigma_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10, 
+                toy_mode=False, num_error_samples=0, 
+                stride_error_samples=None, skip_error_samples=None, 
+                cut_out_drift=False, verbose=False):
+    if verbose:
+        print(f"Using {num_milestones} milestones.")
+        print(f"Using {num_angle_bins} angle bins.")
     
+    trajectory_list = []
+    force_out_freq = None
+    forceRAMD = None
+    time_step = None
+    temperature = None
+    max_dist = None
+    if verbose:
+        print("Now loading log files...")
+        
+    for ramd_log_filename in ramd_log_file_list:
+        trajectories, force_out_freq_, forceRAMD_, time_step_, \
+            num_trajectories_, temperature_, max_dist_ \
+            = parser.parse_ramd_log_file(
+                ramd_log_filename)
+        if force_out_freq is None:
+            force_out_freq = force_out_freq_
+            forceRAMD = forceRAMD_
+            time_step = time_step_
+            temperature = temperature_
+            max_dist = max_dist_
+        else:
+            assert force_out_freq == force_out_freq_, \
+                "RAMD logs contain differing force_out_freq values."
+            assert forceRAMD == forceRAMD_, \
+                "RAMD logs contain differing forceRAMD values."
+            assert time_step == time_step_, \
+                "RAMD logs contain differing time_step values."
+            assert temperature == temperature_, \
+                "RAMD logs contain differing temperature values."
+            assert max_dist == max_dist_, \
+                "RAMD logs contain differing max_dist values."
+            
+        trajectory_list += trajectories
     
-    def make_zeroth_order_terms(self):
-        # inverse times for each slice of xi
-        self.flux_array = np.zeros(self.n_xi)
-        self.time_integrals_xi1 = None
-        for i, xi in enumerate(self.xi_s):
-            time_start_to_finish = self.xi_bin_times[i]
-            #print("i:", i, "time_start_to_finish:", time_start_to_finish)
-            self.flux_array[i] = 1.0 / time_start_to_finish
-            
-        #print("self.flux_array:", self.flux_array)
-        #self.T = self.xi_span / sp_int.simps(self.flux_array, dx=self.h_xi)
-        self.T = self.xi_span / midpoint_Riemann(self.flux_array, dx=self.h_xi)
-        #print("T:", self.T)
-        
-    def make_first_order_terms(self):
-        boundary_terms = np.zeros(self.n_xi)
-        integrated_times_b_to_z = np.zeros(self.n_xi)
-        integrated_times_z_to_c = np.zeros(self.n_xi)
-        self.time_integrals_xi1 = np.zeros(self.n_xi)
-        for i, xi in enumerate(self.xi_s):
-            time_span_b_to_z = np.zeros(self.n)
-            for j, z in enumerate(self.z_s):
-                time_span_b_to_z[j] = self.xi_bin_time_profiles[i, j, 0]
-            integrated_time_b_to_z = sp_int.simps(time_span_b_to_z, dx=self.h_z)
-            
-            boundary_term1 = (self.c-self.a)*self.xi_bin_time_profiles[i, -1, 0]
-            # TODO: check what is valid to do here for a source a != b
-            #boundary_term1 = (self.c-self.a)*self.xi_bin_times[i]
-            #boundary_term1 = (self.c-self.b)*self.xi_bin_times[i]
-            
-            time_span_z_to_c = np.zeros(self.n)
-            for j, z in enumerate(self.z_s):
-                time_span_z_to_c[j] = self.xi_bin_time_profiles[i, -1, j]
-            integrated_time_z_to_c = sp_int.simps(time_span_z_to_c, dx=self.h_z)
-            
-            time_value \
-                = (boundary_term1 - integrated_time_b_to_z \
-                   - integrated_time_z_to_c) * self.flux_array[i]**2 * xi
-            boundary_terms[i] = boundary_term1
-            integrated_times_b_to_z[i] = integrated_time_b_to_z
-            integrated_times_z_to_c[i] = integrated_time_z_to_c
-            self.time_integrals_xi1[i] = time_value
-            if np.isfinite(time_value):
-                self.time_integrals_xi1[i] = time_value
-            else:
-                self.time_integrals_xi1[i] = 0.0
-            
-        #print("boundary_terms:", boundary_terms)
-        #plt.plot(self.xi_s, boundary_terms)
-        #plt.ylim((-0.0, 400.0))
-        #plt.show()
-        
-        time_integral = midpoint_Riemann(
-            self.time_integrals_xi1, dx=self.h_xi) \
-            * self.T**2 / self.xi_span
-        #print("time_integral:", time_integral)
-        #print("self.beta:", self.beta)
-        #print("self.A:", self.A)
-        self.exponent1 = time_integral/self.T
-        #print("self.exponent1:", self.exponent1)
-        self.first_order_correction = self.T * np.exp(self.beta*self.A*self.exponent1)
-        #print("self.first_order_correction:", self.first_order_correction)
-        
-        return
+    beta = 1.0 / (temperature * unit.kelvin \
+                  * samples.kB_kcal_per_mol_per_kelvin)
+    unitless_beta = beta.value_in_unit(unit.mole / unit.kilocalorie)
+    if verbose:
+        print("Number of trajectories extracted from log file(s):", 
+              len(trajectory_list))
+        print("force_out_freq:", force_out_freq)
+        print("forceRAMD:", forceRAMD, "kcal/(mole * Angstrom)")
+        print("time_step:", time_step, "ps")
+        print("temperature:", temperature, "K")
+        print("max_dist:", max_dist, "A")
+        print("beta:", beta)
     
-    def make_second_order_terms(self):
-        time_integrals_xi = np.zeros(self.n_xi)
-        for i, xi in enumerate(self.xi_s):
-            # Test the on-diagonal b to z
-            time_span_on_diag_b_to_z = np.zeros(self.n)
-            for j1, z in enumerate(self.z_s):
-                integral_span_inner1 = np.zeros(j1+1)
-                for j2 in range(j1+1):
-                   
-                    integral_span_inner1[j2] \
-                        = self.xi_bin_time_profiles[i, j2, 0]
-                
-                time_b_to_z = sp_int.simps(integral_span_inner1, dx=self.h_z)
-                time_span_on_diag_b_to_z[j1] = time_b_to_z
-            
-            integrated_time_b_to_z = 2.0 \
-                * sp_int.simps(time_span_on_diag_b_to_z, dx=self.h_z)
-            
-            # boundary term c**2
-            boundary_term_b_to_c1 = (self.c-self.a)**2 \
-                * self.xi_bin_time_profiles[i, -1, 0]
-            
-            # boundary term 2*c
-            integral_span_inner1 = np.zeros(self.n)
-            for j, z in enumerate(self.z_s):
-                integral_span_inner1[j] = self.xi_bin_time_profiles[i, j, 0]
-            boundary_term_b_to_c2 = 2.0 * (self.c-self.a) \
-                * sp_int.simps(integral_span_inner1, dx=self.h_z)
-            on_diag_b_to_z = boundary_term_b_to_c1 - boundary_term_b_to_c2 \
-                + integrated_time_b_to_z
-            
-            # on diagonal z to c
-            time_span_z_to_c = np.zeros(self.n)
-            for j1, z in enumerate(self.z_s):
-                integral_span_inner1 = np.zeros(self.n-j1)
-                for j2 in range(j1, self.n):
-                    index2 = self.n-j2-1
-                    
-                    integral_span_inner1[index2] = self.xi_bin_time_profiles[i, -1, j2]
-                
-                time_z_to_c = sp_int.simps(integral_span_inner1, dx=self.h_z)
-                time_span_z_to_c[j1] = time_z_to_c
-            
-            integrated_time_z_to_c = 2.0 \
-                * sp_int.simps(time_span_z_to_c, dx=self.h_z)
-            on_diag_est = on_diag_b_to_z + integrated_time_z_to_c
-            
-            # Test the off-diagonal b to z
-            
-            # boundary term b to z
-            integral_span_inner1 = np.zeros(self.n)
-            for j1, z in enumerate(self.z_s):
-                integral_span_inner1[j1] = self.xi_bin_time_profiles[i, -1, j1]
-            off_diag_b_to_z_boundary_term = self.c \
-                * sp_int.simps(integral_span_inner1, dx=self.h_z)
-            
-            time_span_zprime_to_z = np.zeros(self.n)
-            for j1, z in enumerate(self.z_s):
-                integral_span_inner1 = np.zeros(j1+1)
-                for j2 in range(j1+1):
-                    integral_span_inner1[j2] \
-                        = self.xi_bin_time_profiles[i, j1, j2]
-                
-                time_b_to_z = sp_int.simps(integral_span_inner1, dx=self.h_z)
-                time_span_zprime_to_z[j1] = time_b_to_z
-            
-            off_diag_zprime_to_z = sp_int.simps(
-                time_span_zprime_to_z, dx=self.h_z)
-            
-            time_span_z_to_zprime = np.zeros(self.n)
-            for j1, z in enumerate(self.z_s):
-                integral_span_inner1 = np.zeros(self.n-j1)
-                for j2 in range(j1, self.n):
-                    index2 = j2 - j1
-                    integral_span_inner1[index2] \
-                        = self.xi_bin_time_profiles[i, j2, j1]
-                
-                time_b_to_z = sp_int.simps(integral_span_inner1, dx=self.h_z)
-                time_span_z_to_zprime[j1] = time_b_to_z
-            
-            off_diag_z_to_zprime = sp_int.simps(
-                time_span_z_to_zprime, dx=self.h_z)
-            
-            off_diag_est = 2.0 * off_diag_b_to_z_boundary_term \
-                - off_diag_zprime_to_z - off_diag_z_to_zprime
-            
-            #print("xi:", xi, "on_diag_est:", on_diag_est, "off_diag_est:", off_diag_est)
-            #print("xi:", xi, "off_diag_b_to_z_boundary_term:", off_diag_b_to_z_boundary_term, 
-            #                 "off_diag_zprime_to_z:", off_diag_zprime_to_z,
-            #                 "off_diag_z_to_zprime:", off_diag_z_to_zprime)
-            
-            time_value = (-on_diag_est + off_diag_est) \
-                * self.flux_array[i]**2 * xi**2
-            if np.isfinite(time_value):
-                time_integrals_xi[i] = time_value
-            else:
-                time_integrals_xi[i] = 0.0
-            #print("xi:", xi, "time_integrals_xi[i]:", time_integrals_xi[i])
+    # Each trajectory represents a set of frames between force changes
+    # Align the trajectories and convert to 1D, and xi values
+    one_dim_trajs = parser.condense_trajectories(
+        trajectory_list, max_dist, onlyZ=toy_mode)
         
-        # Down here, integrate over u values
-        time_integral = -midpoint_Riemann(time_integrals_xi, dx=self.h_xi) \
-            * self.T**2 / self.xi_span
-        time_integrals_xi1_flux3 = np.zeros(self.n_xi)
+    #Construct a milestoning model based on trajectory fragments
+    milestones, min_location, max_location, starting_cv_val, starting_index, h,\
+        situation = milestoning.uniform_milestone_locations(
+            one_dim_trajs, num_milestones, max_dist)
+    if situation == 1:
+        # a forward exit (parallel to CV)
+        bulk_milestones = [num_milestones - 1]
+    elif situation == 2:
+        # a backward exit (antiparallel to CV)
+        bulk_milestones = [0]
+    else:
+        bulk_milestones = [0, num_milestones - 1]
         
-        #plt.plot(self.xi_s, time_integrals_xi)
-        #plt.ylim((-4000.0, 4000.0))
-        #plt.show()
-        
-        term1 = 2 * midpoint_Riemann(self.time_integrals_xi1, dx=self.h_xi)**2 \
-            * self.T**3 / self.xi_span**2
-        
-        for i, xi in enumerate(self.xi_s):
-            time_value = self.time_integrals_xi1[i]**2 \
-                / self.flux_array[i]
-            if np.isfinite(time_value):
-                time_integrals_xi1_flux3[i] = time_value
-            else:
-                time_integrals_xi1_flux3[i] = 0.0
-            
-        term2 = -2 * midpoint_Riemann(time_integrals_xi1_flux3, dx=self.h_xi) \
-            * self.T**2 / self.xi_span
-        
-        term3 = time_integral
-        #print("term1:", term1)
-        #print("term2:", term2)
-        #print("term3:", term3)
-        term_sum = term1 + term2 + term3
-        exponent2_a = term_sum / self.T
-        exponent2_b = (self.exponent1 / self.T)**2
-        self.exponent2 = (exponent2_a - exponent2_b)/2.0
-        self.second_order_correction = self.first_order_correction \
-            * np.exp(self.beta**2*self.A**2*self.exponent2)
-        #self.second_order_correction = self.beta**2*self.A**2*time_integral/2.0
+    if verbose:
+        np.set_printoptions(precision=3)
+        print("milestones:", np.array(milestones), "h:", f"{h:.3f} (A)")
+        print("starting_index:", starting_index)
     
-    # Truncated Taylor series
-    def time_estimate_taylor_series_second_order(self):
-        self.make_zeroth_order_terms()
-        self.make_first_order_terms()
-        self.make_second_order_terms()
-        time_estimate = self.second_order_correction
-        return time_estimate
+    xi_bins = samples.make_xi_bins(
+        num_angle_bins, num_milestones, milestones, situation)
+    for i, trajectory in enumerate(one_dim_trajs):
+        if len(trajectory) == 0:
+            continue
+        traj_xi = trajectory[0][1]
+        found_bin = False
+        for j, xi_bin in enumerate(xi_bins):
+            if (traj_xi >= xi_bin.lowest_boundary) \
+                    and (traj_xi <= xi_bin.highest_boundary):
+                xi_bin.trajs.append(trajectory)
+                found_bin = True
+                break
+        
+        if not found_bin:
+            raise Exception(f"xi value {traj_xi} not placed in bin.")
     
-    def time_estimate_pade_approx_second_order(self):
-        """
-        Pade is not working very well...
-        """
-        self.make_zeroth_order_terms()
-        self.make_first_order_terms()
-        self.make_second_order_terms()
-        a_0 = np.log(self.T)
-        a_1 = self.exponent1
-        a_2 = self.exponent2
-        time_estimate = np.exp((a_0 + (a_1-(a_2*a_0/a_1))*self.beta*self.A) \
-                               / (1.0 - (a_2/a_1)*self.beta*self.A))
-        return time_estimate
+    frame_time = time_step * force_out_freq
+    #forceRAMD_in_nm_unitless = forceRAMD * A_per_nm
+    #forceRAMD_in_nm = forceRAMD_in_nm_unitless * unit.kilocalories_per_mole
+    #forceRAMD_in_A = forceRAMD * unit.kilocalories_per_mole
+    
+    for i, xi_bin in enumerate(xi_bins):
+        xi = xi_bin.midpoint
+        if verbose:
+            print(f"num trajectories in bin {i}: {len(xi_bin.trajs)}")
+        assert len(xi_bin.trajs) > 0, "All angle bins need trajectories. "\
+            "Either run more simulations or decrease the number of angle bins."
+        count_matrix, time_vector, time_matrix, avg_time_vector, \
+            avg_time_matrix = milestoning.make_milestoning_model(
+                xi_bin.trajs, milestones, frame_time, num_milestones,
+                remove_unbalanced_frame_counts=cut_out_drift)
+        
+        if verbose:
+            print(f"count_matrix {i}:")
+            print(count_matrix)
+            print(f"time_vector {i}:")
+            print(time_vector)
+        
+        xi_bin.assign_main_data_sample(
+            count_matrix, time_vector, avg_time_vector, avg_time_matrix)
+        xi_bin.make_profiles(starting_index, wrap_sink=False, 
+                                     unitless_beta=unitless_beta)
+        xi_bin.unslant_data_samples(forceRAMD, beta)
+        xi_bin.counts = milestoning.compute_counts(count_matrix, num_milestones)
+        xi_bin.make_profiles(starting_index, wrap_sink=False, 
+                             unitless_beta=unitless_beta, 
+                             data_sample=xi_bin.main_data_sample_unslanted)
+    
+    analysis = samples.Analysis(num_milestones, milestones, h, situation, 
+                                bulk_milestones)
+    analysis.avg_unslanted_xi_bins(xi_bins)
+    if num_error_samples > 0:
+        analysis.sample_error_matrices(
+            num_error_samples, stride_error_samples, skip_error_samples)
+    analysis.make_profiles(starting_index, wrap_sink=False, 
+                           unitless_beta=unitless_beta)
+    analysis.make_times(starting_index)
+    return analysis
+
+# TODO: add Torque balancing in the RAMD.
+if __name__ == "__main__":
+    argparser = argparse.ArgumentParser(description=__doc__)
+    argparser.add_argument(
+        "ramd_log_files", metavar="RAMDLOGFILES", type=str, nargs="+",
+        help="The RAMD log files to open and parse.")
+    argparser.add_argument(
+        "-n", "--num_milestones", dest="num_milestones", default=20,
+        help="The number of milestones to use in the milestoning "\
+        "calculation.", type=int)
+    argparser.add_argument(
+        "-a", "--num_angle_bins", dest="num_angle_bins", default=10,
+        help="The number of bins to divide the force vectors into.", type=int)
+    argparser.add_argument(
+        "-t", "--toy_mode", dest="toy_mode", default=False,
+        help="In toy mode, we assume that the main CV of the simulation is "\
+        "the Z-axis of the zeroth particle. In contrast, the CV of a non-"
+        "toy system is found using a more complex procedure.", 
+        action="store_true")
+    argparser.add_argument(
+        "-N", "--num_error_samples", dest="num_error_samples", 
+        default=100, type=int, help="Specify the number of error samples" \
+        " to generate for estimating error/uncertainty of computed "\
+        "values. Default: 100")
+    argparser.add_argument(
+        "-S", "--stride_error_samples", dest="stride_error_samples", 
+        default=None, type=int, help="Specify the number of strides between" \
+        "saved error samples. An argument of None automatically assigns the "\
+        "quantity at the number of milestones in the model squared. Default: "\
+        "None")
+    argparser.add_argument(
+        "-K", "--skip_error_samples", dest="skip_error_samples", 
+        default=None, type=int, help="Specify the number of error samples. "\
+        "An argument of None automatically assigns the quantity at ten times "\
+        "the number of milestones in the model squared. Default: None.")
+    argparser.add_argument(
+        "-c", "--cut_out_drift", dest="cut_out_drift", default=False,
+        help="Exact milestoning theory requires truly equilibrium "\
+        "trajectories. RAMD simulations aren't that. This will attempt to cut "\
+        "the most non-equilibrium situations where there is drift between "\
+        "starting and ending locations.", action="store_true")
+    argparser.add_argument(
+        "-v", "--verbose", dest="verbose", default=False,
+        help="Verbose mode will print out much more information about the "\
+        "milestoning model, and other information.", action="store_true")
+    
+    args = argparser.parse_args()
+    args = vars(args)
+    ramd_log_files = args["ramd_log_files"]
+    num_milestones = args["num_milestones"]
+    num_angle_bins = args["num_angle_bins"]
+    toy_mode = args["toy_mode"]
+    num_error_samples = args["num_error_samples"]
+    stride_error_samples = args["stride_error_samples"]
+    skip_error_samples = args["skip_error_samples"]
+    cut_out_drift = args["cut_out_drift"]
+    verbose = args["verbose"]
+    
+    analysis = sigma_ramd(
+        ramd_log_files, num_milestones, num_angle_bins, toy_mode=toy_mode, 
+        num_error_samples=num_error_samples, 
+        stride_error_samples=stride_error_samples, 
+        skip_error_samples=skip_error_samples, cut_out_drift=cut_out_drift, 
+        verbose=verbose)
+    
+    analysis.print_results()
+    analysis.create_plots()

@@ -6,10 +6,11 @@ import PyGT
 import numpy as np
 from openmm import unit
 import matplotlib.pyplot as plt
+from copy import deepcopy
 
-import openmm_ramd.analyze.milestoning as milestoning
-import openmm_ramd.analyze.remove_slant as remove_slant
-import openmm_ramd.analyze.error_margins as error_margins
+import openmm_ramd.analyze.modules.milestoning as milestoning
+import openmm_ramd.analyze.modules.remove_slant as remove_slant
+import openmm_ramd.analyze.modules.error_margins as error_margins
 
 kB_kcal_per_mol_per_kelvin = unit.MOLAR_GAS_CONSTANT_R.in_units_of(
     unit.kilocalories_per_mole / unit.kelvin)
@@ -37,7 +38,7 @@ class Xi_bin():
     
     """
     def __init__(self, num_milestones, milestones, lowest_boundary, midpoint, 
-                 highest_boundary, situation, mode=1):
+                 highest_boundary, situation):
         self.num_milestones = num_milestones
         self.milestones = milestones
         self.lowest_boundary = lowest_boundary
@@ -48,7 +49,6 @@ class Xi_bin():
         self.main_data_sample_unslanted = None
         self.counts = None
         self.situation = situation
-        self.mode = mode
         return
     
     def assign_main_data_sample(self, count_matrix, time_vector, 
@@ -91,32 +91,13 @@ class Xi_bin():
     
     def unslant_data_samples(self, forceRAMD_in_A_unitless, beta):
         slanting_force = -self.midpoint * forceRAMD_in_A_unitless
-        if self.mode == 1:
-            unslanted_rate_matrix, unslanted_transition_matrix, \
-                unslanted_avg_time_vector \
-                    = remove_slant.unslant_transition_matrix_constant_approx(
-                    self.milestones, self.main_data_sample.K, 
-                    self.main_data_sample.t, self.main_data_sample.t_matrix, 
-                    slanting_force, beta)
-            unslanted_energy_profile = np.zeros(self.num_milestones)
-                    
-        elif self.mode == 2:
-            #print("data_sample.Q")
-            #print(self.main_data_sample.Q)
-            #print("data_sample.K")
-            #print(self.main_data_sample.K)
-            #print("self.main_data_sample.t")
-            #print(self.main_data_sample.t)
-                    
-            unslanted_rate_matrix, unslanted_transition_matrix, \
-                unslanted_avg_time_vector, unslanted_energy_profile \
-                    = remove_slant.unslant_transition_matrix_from_energy_profile(
-                    self.milestones, self.main_data_sample.free_energy_profile, 
-                    self.main_data_sample.diffusion_profile, slanting_force, 
-                    beta)
-        
-        else:
-            raise Exception(f"Mode option not allowed: {self.mode}")
+        unslanted_rate_matrix, unslanted_transition_matrix, \
+            unslanted_avg_time_vector \
+                = remove_slant.unslant_transition_matrix_constant_approx(
+                self.milestones, self.main_data_sample.K, 
+                self.main_data_sample.t, self.main_data_sample.t_matrix, 
+                slanting_force, beta)
+        unslanted_energy_profile = np.zeros(self.num_milestones)
         
         new_data_sample = self.assign_unslanted_data(
             unslanted_avg_time_vector, unslanted_transition_matrix, 
@@ -145,8 +126,6 @@ class Analysis:
         self.diffusion_profile = None
         self.diffusion_profile_err = None
         self.bulk_milestones = bulk_milestones
-        self.MFPTs_per_bulk = None
-        self.MFPTs_per_bulk_err = None
         self.MFPT = None
         self.MFPT_error = None
         self.k_off = None
@@ -266,14 +245,11 @@ class Analysis:
             self.main_data_sample.Q[j, j] = -sum(self.main_data_sample.Q[:,j])
         
         
-        time_estimate, times = compute_time(self.main_data_sample.Q, 
-                                            starting_index, self.bulk_milestones)
+        time_estimate = compute_time(
+            self.main_data_sample.Q, starting_index, self.bulk_milestones)
         if self.num_error_samples > 0:
             time_estimate_list = []
-            time_estimate_list_per_bulk = []
-            for _ in range(len(times)):
-                time_estimate_list_per_bulk.append([])
-                
+            
             k_off_list = []
             for k, data_sample in enumerate(self.data_samples):
                 tmp_float128 = data_sample.Q.astype(np.longdouble)
@@ -282,34 +258,21 @@ class Analysis:
                     data_sample.Q[j, j] = -sum(data_sample.Q[:,j])
                 
                 try:
-                    time_estimate_val, times_val = compute_time(
+                    time_estimate_val = compute_time(
                         tmp_float128, starting_index, self.bulk_milestones)
                     time_estimate_list.append(float(time_estimate_val))
-                    for i in range(len(times)):
-                        time_estimate_list_per_bulk[i].append(times_val[i])
                     
                     k_off_list.append(1.0 / time_estimate_val)
                 except AssertionError:
-                    print(f"Unstable sampled error matrix in iteration {k}. Skipping")
+                    print(f"Unstable sampled error matrix in iter {k}. Skip.")
                     continue
             
             time_estimate_err = np.std(time_estimate_list)
-            time_estimate_errs = []
-            for i in range(len(times)):
-                time_estimate_errs.append(np.std(time_estimate_list_per_bulk[i]))
-                
             k_off_err = np.std(k_off_list)
         else:
             time_estimate_err = np.inf
-            time_estimate_errs = []
-            for i in range(len(times)):
-                time_estimate_errs.append(np.inf)
-                
             k_off_err = np.inf
             
-        
-        self.MFPTs_per_bulk = times
-        self.MFPTs_per_bulk_err = time_estimate_errs
         self.MFPT = time_estimate
         self.MFPT_error = time_estimate_err
         self.k_off = 1.0 / time_estimate
@@ -318,11 +281,6 @@ class Analysis:
     
     def print_results(self):
         print("Printing results from RAMD analysis.")
-        if len(self.bulk_milestones) > 1:
-            for i, bulk_milestone in enumerate(self.bulk_milestones):
-                print(f"Time to bulk milestone {bulk_milestone} (ps):", 
-                      pretty_string_value_error(
-                self.MFPTs_per_bulk[i], self.MFPTs_per_bulk_err[i]))
         print("MFPT (ps):", pretty_string_value_error(
             self.MFPT, self.MFPT_error))
         print("k_off (1/ps):", pretty_string_value_error(
@@ -349,33 +307,70 @@ class Analysis:
         #pi_fig.savefig(os.path.join(image_directory, "profile.png"))
         plt.show()
         
-def make_xi_bins(num_xi_bins, num_milestones, milestones, situation, mode):
+def make_xi_bins(num_xi_bins, num_milestones, milestones, situation):
     xi_bins = []
     xi_bins_ranges = np.linspace(-1.0, 1.0, num_xi_bins+1)
     for j in range(num_xi_bins):
         midpoint = 0.5 * (xi_bins_ranges[j] + xi_bins_ranges[j+1])
         #xi_values.append(xi_value)
         xi_bin = Xi_bin(num_milestones, milestones, xi_bins_ranges[j], midpoint, 
-                        xi_bins_ranges[j+1], situation, mode)
+                        xi_bins_ranges[j+1], situation)
         xi_bins.append(xi_bin)
         
     return xi_bins
 
-def compute_time(rate_matrix, starting_index, bulk_milestones):
-    #rate_matrix = remove_slant.milestoning_statistics_from_profiles(
-    #    milestones, energy_profile_avg, diffusion_profile_avg, beta)
-    time_estimate_inv = 0.0
-    times = []
-    B, tau = PyGT.tools.load_CTMC(rate_matrix)
-    for bulk_milestone in bulk_milestones:
-        mfpt_ij, mfpt_ji = PyGT.mfpt.compute_MFPT(
-                        starting_index, bulk_milestone, B, tau)
-        mfpt_ji_inv = 1.0 / mfpt_ji
-        time_estimate_inv += mfpt_ji_inv
-        times.append(mfpt_ji)
+def combine_dest_states(Q, src_indices, dest_indices):
+    """
+    When multiple milestones represent a given destination state, then
+    adjust the rate matrix to consider all states, with fluxes into them,
+    as a single state (single row and column in the matrix).
+    """
+    newQ = deepcopy(Q)
+    new_src_indices = deepcopy(src_indices)
+    new_dest_indices = deepcopy(dest_indices)
+    n = newQ.shape[0]
+    # insert a new row and column at the very end
+    newQ = np.insert(newQ, n, np.zeros(n), 0)
+    newQ = np.insert(newQ, n, np.zeros(n+1), 1)
+    for i in range(len(dest_indices)):
+        dest_index = new_dest_indices[i]
+        dest_row = np.delete(newQ[dest_index,:], dest_index, 0)
+        dest_column = np.delete(newQ[:,dest_index], dest_index, 0)
+        newQ = np.delete(newQ, dest_index, 0)
+        newQ = np.delete(newQ, dest_index, 1)
+        newQ[-1,:] += dest_row
+        newQ[:,-1] += dest_column
         
-    time_estimate = 1.0 / time_estimate_inv
-    return time_estimate, times
+        for j in range(len(new_src_indices)):
+            old_src_index = new_src_indices[j]
+            if old_src_index > dest_index:
+                new_src_indices[j] = old_src_index - 1
+            else:
+                new_src_indices[j] = old_src_index
+        
+        for j in range(len(new_dest_indices)):
+            old_dest_index = new_dest_indices[j]
+            if old_dest_index > dest_index:
+                new_dest_indices[j] = old_dest_index - 1
+            else:
+                new_dest_indices[j] = old_dest_index
+        
+    n = newQ.shape[0]
+    for i in range(n):
+        newQ[i,i] = 0.0
+        newQ[i,i] = -np.sum(newQ[i,:])
+    
+    return newQ, new_src_indices, n-1
+
+def compute_time(rate_matrix, starting_index, bulk_milestones):
+    bulk_combined_Q, new_starting_index_list, bulk_index \
+        = combine_dest_states(rate_matrix.T, [starting_index], bulk_milestones)
+    B, tau = PyGT.tools.load_CTMC(bulk_combined_Q.T)
+    new_starting_index = new_starting_index_list[0]
+    mfpt_ij, mfpt_ji = PyGT.mfpt.compute_MFPT(
+        new_starting_index, bulk_index, B, tau)
+    time_estimate = mfpt_ji
+    return time_estimate
 
 def correct_rate_matrix_for_ramd(rate_matrix_avg):
     end_rate = rate_matrix_avg[-3, -2]

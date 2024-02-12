@@ -125,6 +125,8 @@ def get_smoluchowski_flux(z_s, energy_span, diffusion_span, beta, forward):
             f"diffusion_span[{j}] = {diffusion_span[j]}"
         inv_stat_dist[j] = np.exp(beta*(energy_span[j] - ref_energy))\
             / diffusion_span[j]
+        if (inv_stat_dist[j] == 0.0) or (not np.isfinite(inv_stat_dist[j])):
+            inv_stat_dist[j] = 0.0
     
     time_integral_span_outer = np.zeros(num_integration_points)
     for j in range(num_integration_points):
@@ -142,6 +144,11 @@ def get_smoluchowski_u(z_s, energy_span, diffusion_span, beta, forward):
     for j in range(num_integration_points):
         stationary_dist[j] = np.exp(-beta*energy_span[j])
         inv_stat_dist[j] = np.exp(beta*energy_span[j])/diffusion_span[j]
+        if (stationary_dist[j] == 0.0) or (inv_stat_dist[j] == 0.0) \
+                or (not np.isfinite(stationary_dist[j])) \
+                or (not np.isfinite(inv_stat_dist[j])):
+            stationary_dist[j] = 0.0
+            inv_stat_dist[j] = 0.0
     
     time_integral_span_outer = np.zeros(num_integration_points)
     for j in range(num_integration_points):
@@ -204,103 +211,3 @@ def get_smoluchowski_u_two_points(
     int_u, u_z = get_smoluchowski_u(space_span, energy_span, diffusion_span, beta, 
                                  forward=forward)
     return int_u, u_z
-
-
-def unslant_transition_matrix_from_energy_profile(
-        milestones, energy_profile, diffusion_profile, slanting_force, beta):
-    num_milestones = len(milestones)
-    unslanted_energy_profile = np.zeros(num_milestones)
-    for i, z in enumerate(milestones):
-        unslanted_energy_profile[i] = energy_profile[i] - z * slanting_force
-    
-    unslanted_rate_matrix = np.zeros((num_milestones, num_milestones), dtype=np.longdouble)
-    unslanted_transition_matrix = np.zeros((num_milestones, num_milestones))
-    unslanted_avg_time_vector = np.zeros((num_milestones, 1))
-    
-    for i, z in enumerate(milestones):
-        if i == 0:
-            doing_a = False
-            doing_c = True
-        elif i == num_milestones - 1:
-            doing_a = True
-            doing_c = False
-        else:
-            doing_a = True
-            doing_c = True
-        
-        total_flux = 0.0
-        total_u = 0.0
-        energy_b = unslanted_energy_profile[i]
-        diffusion_b = diffusion_profile[i]
-        
-        b = z
-        if doing_a:
-            a = milestones[i-1]
-            energy_a = unslanted_energy_profile[i-1]
-            if abs(energy_a - energy_b) < THRESH_ENERGY:
-                diffusion_a = diffusion_profile[i-1]
-                flux_b_to_a = get_smoluchowski_flux_two_points(
-                    a, b, energy_a, energy_b, diffusion_a, diffusion_b, beta, 
-                    forward=False)
-                u_b_to_a, u_z_backward = get_smoluchowski_u_two_points(
-                    a, b, energy_a, energy_b, diffusion_a, diffusion_b, beta, 
-                    forward=False)
-                total_flux += flux_b_to_a
-                total_u += u_b_to_a
-            else:
-                # energy difference too large - no flux
-                flux_b_to_a = 0.0
-            
-        else:
-            #time_b_to_a = 0.0
-            flux_b_to_a = 0.0
-            
-        if doing_c:
-            c = milestones[i+1]
-            energy_c = unslanted_energy_profile[i+1]
-            if abs(energy_c - energy_b) < THRESH_ENERGY:
-                diffusion_c = diffusion_profile[i+1]
-                flux_b_to_c = get_smoluchowski_flux_two_points(
-                    b, c, energy_b, energy_c, diffusion_b, diffusion_c, beta, 
-                    forward=True)
-                u_b_to_c, u_z_forward = get_smoluchowski_u_two_points(
-                    b, c, energy_b, energy_c, diffusion_b, diffusion_c, beta, 
-                    forward=True)
-                total_flux += flux_b_to_c
-                total_u += u_b_to_c
-            else:
-                flux_b_to_c = 0.0
-            
-        else:
-            #time_b_to_c = 0.0
-            flux_b_to_c = 0.0
-        
-        # Tomorrow: make some tests for these functions to get to the bottom
-        # of what is going wrong.
-        
-        if total_flux > 0.0:
-            P_b_to_a = flux_b_to_a / total_flux
-            P_b_to_c = flux_b_to_c / total_flux
-            time = total_u / total_flux
-            
-            if doing_a:
-                unslanted_rate_matrix[i-1, i] = P_b_to_a / time
-                unslanted_transition_matrix[i-1, i] = P_b_to_a
-            
-            if doing_c:
-                unslanted_rate_matrix[i+1, i] = P_b_to_c / time
-                unslanted_transition_matrix[i+1, i] = P_b_to_c
-            
-            unslanted_rate_matrix[i, i] = -1.0 / time
-            unslanted_avg_time_vector[i, 0] = time
-            
-        else:
-            P_b_to_a = 0.0
-            P_b_to_c = 0.0
-            time = 0.0
-        
-        
-    
-    return unslanted_rate_matrix, unslanted_transition_matrix, \
-        unslanted_avg_time_vector, unslanted_energy_profile
-    

@@ -23,8 +23,8 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-import openmm_ramd.analyze.parser as parser
-import openmm_ramd.analyze.samples as samples
+import openmm_ramd.analyze.modules.parser as parser
+import openmm_ramd.analyze.modules.samples as samples
 
 NUM_MONTE_CARLO_SAMPLES = 100
 NUM_ASSOC_PROP_STEPS = 1000
@@ -61,7 +61,8 @@ def plot_association_proportion(force_const_dict_times):
             y[i] = np.log(N_t / N_0)
             
         plt.scatter(x, y, marker="o", facecolors="none", edgecolors="r")
-        plt.title(f"Association Probability at Force {force_const} kcal/(mol $\\cdot$ A)")
+        plt.title(f"Association Probability at Force {force_const} "\
+                  "kcal/(mol $\\cdot$ A)")
         plt.ylabel("ln($N(t)$/$N(0)$)")
         plt.xlabel("$t$ ps")
         plt.tight_layout()
@@ -81,7 +82,8 @@ def fit_and_extrapolate(force_const_dict_times):
             log_log_time_list.append(log_log_time)
     
     if len(force_list) > 2:
-        coeffs, cov_mat = np.polyfit(force_list, log_log_time_list, 1, cov=True)
+        coeffs, cov_mat = np.polyfit(force_list, log_log_time_list, 1, 
+                                     cov="unscaled")
         intercept_std = cov_mat[1,1]
     else:
         coeffs = np.polyfit(force_list, log_log_time_list, 1, cov=False)
@@ -106,10 +108,10 @@ def fit_and_extrapolate(force_const_dict_times):
     median_diff = np.median(times_minus_median)
     
     print("Printing values extrapolated to zero force:")
-    print("ln(ln(tau_0)):", samples.pretty_string_value_error(
+    print("ln(ln(tau_0/ps)):", samples.pretty_string_value_error(
         intercept_avg, intercept_std))
     print("tau_0:", samples.pretty_string_value_error(
-        time_0, median_diff))
+        time_0, median_diff), "ps")
     
     plot_fitting_extrapol(
         force_list, log_log_time_list, polynomial, intercept_avg, intercept_std)
@@ -140,15 +142,16 @@ def maximova(ramd_log_files, include_all_times):
                 force_const_dict_times[force_const].append(end_step * time_step)
     
     for force_const, end_times in force_const_dict_times.items():
-        print(f"Found {len(end_times)} trajectories for force constant {force_const} kcal/(mol * A).")
+        print(f"Found {len(end_times)} trajectories for force constant "\
+              f"{force_const} kcal/(mol * A).")
         
     assert len(force_const_dict_steps) > 1, "Simulations with more than one "\
         "force constant needed to perform fitting and extrapolation."
     
     print("Fitting and extrapolating data points...")
-    fit_and_extrapolate(force_const_dict_times)
+    tau_0, tau_0_error = fit_and_extrapolate(force_const_dict_times)
     
-    return force_const_dict_times
+    return tau_0, tau_0_error, force_const_dict_times
     
 
 if __name__ == "__main__":
@@ -163,7 +166,8 @@ if __name__ == "__main__":
         "the times of even the unfinished trajectories to be counted. "\
         "Default: False.", action="store_true")
     argparser.add_argument(
-        "-p", "--make_probability_plots", dest="make_probability_plots", default=False, 
+        "-p", "--make_probability_plots", dest="make_probability_plots", 
+        default=False, 
         help="Generate plots that depict association probability over time. "\
         "Default: False.", action="store_true")
     
@@ -173,6 +177,7 @@ if __name__ == "__main__":
     include_all_times = args["include_all_times"]
     make_probability_plots = args["make_probability_plots"]
     
-    force_const_dict_times = maximova(ramd_log_files, include_all_times)
+    tau_0, tau_0_error, force_const_dict_times = maximova(
+        ramd_log_files, include_all_times)
     if make_probability_plots:
         plot_association_proportion(force_const_dict_times)

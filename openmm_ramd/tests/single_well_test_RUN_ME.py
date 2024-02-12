@@ -8,10 +8,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.integrate as sp_int
 
-import openmm_ramd.analyze.samples as samples
-import openmm_ramd.analyze.milestoning as milestoning
-import openmm_ramd.analyze.remove_slant as remove_slant
-import openmm_ramd.analyze.analyze_log as analyze_log
+import openmm_ramd.analyze.modules.samples as samples
+import openmm_ramd.analyze.modules.milestoning as milestoning
+import openmm_ramd.analyze.modules.remove_slant as remove_slant
+import openmm_ramd.analyze.sigma_ramd as sigma_ramd
 
 # Define constants and variables
 
@@ -38,10 +38,9 @@ num_milestones = 41
 num_xi_bins = 10
 start_milestone_index = num_milestones // 10
 
-WELL_DEPTH = 7.0 # * 4.184
+WELL_DEPTH = 14.0 # * 4.184
 force_magnitude = 2.0 #5.0
 
-MODE = 1
 SITUATION = 1
 BULK_MILESTONES = [num_milestones - 1]
 
@@ -157,14 +156,26 @@ def compute_time(z_s, beta, potential_energy, diffusion_coefficient, h_z, start=
     for j, z in enumerate(z_s):
         stationary_dist[j] = normalize_const * np.exp(-potential_energy[j]*beta)
         inv_stat_dist[j] = inv_normalize_const * np.exp(potential_energy[j]*beta) / diffusion_coefficient[j]
+        if (stationary_dist[j] == 0.0) or (inv_stat_dist[j] == 0.0) \
+                or (not np.isfinite(stationary_dist[j])) or (not np.isfinite(inv_stat_dist[j])):
+            stationary_dist[j] = 0.0
+            inv_stat_dist[j] = 0.0
     
     for j1, z1 in enumerate(z_s1):
         stationary_dist1[j1] = normalize_const * np.exp(-potential_energy[j1]*beta)
         inv_stat_dist1[j1] = inv_normalize_const * np.exp(potential_energy[j1]*beta) / diffusion_coefficient[j1]
+        if (stationary_dist1[j1] == 0.0) or (inv_stat_dist1[j1] == 0.0) \
+                or (not np.isfinite(stationary_dist1[j1])) or (not np.isfinite(inv_stat_dist1[j1])):
+            stationary_dist1[j1] = 0.0
+            inv_stat_dist1[j1] = 0.0
     
     for j2, z2 in enumerate(z_s2):
         stationary_dist2[j2] = normalize_const * np.exp(-potential_energy[start_index+j2]*beta)
         inv_stat_dist2[j2] = inv_normalize_const * np.exp(potential_energy[start_index+j2]*beta) / diffusion_coefficient[start_index+j2]
+        if (stationary_dist2[j2] == 0.0) or (inv_stat_dist2[j2] == 0.0) \
+                or (not np.isfinite(stationary_dist2[j2])) or (not np.isfinite(inv_stat_dist2[j2])):
+            stationary_dist2[j2] = 0.0
+            inv_stat_dist2[j2] = 0.0
     
     # distribution to the left of the source
     time1_integral1_span = np.zeros(z_s1.shape)
@@ -184,16 +195,12 @@ def compute_time(z_s, beta, potential_energy, diffusion_coefficient, h_z, start=
     # distribution to the right of the source
     time_integral_span_outer = np.zeros(z_s2.shape)
     for j1, z1 in enumerate(z_s2):
-        #if j1 < n2:
         time_integral_span_inner = np.zeros(n2-j1)
         for j2 in range(j1, n2):
             index2 = j2 - j1
             time_integral_span_inner[index2] = inv_stat_dist2[j2]
             
         time_integral_span_outer[j1] = stationary_dist2[j1] * sp_int.simps(time_integral_span_inner, dx=h_z)
-        
-        #else:
-        #    time_integral_span_outer[j1] = 0.0
             
     time2 = sp_int.simps(time_integral_span_outer, dx=h_z)
     time = time1 + time2
@@ -299,8 +306,6 @@ if __name__ == "__main__":
     z_s = np.linspace(min_z, max_z, n_z+1)
     
     potential_energy_func = potential_energy_well_2
-    #potential_energy_func = potential_energy_flat
-    #diffusion_coefficient_func = diffusion_coefficient_slanted
     diffusion_coefficient_func = diffusion_coefficient_flat
 
     zeros = np.zeros(z_s.shape)
@@ -312,36 +317,16 @@ if __name__ == "__main__":
         = compute_time(z_s, beta, potential_energy1, diffusion_coefficient1, 
                        h_z, start=start_z)
     print("Expected escape time:", time1, "ps")
-    
-    """
-    # PLOT ORIGINAL FUNCTION
-    plt.plot(z_s, potential_energy1, "g", label="Potential energy $W(z) (kJ/mol)$")
-    plt.plot(z_s, diffusion_coefficient1, "b", label="Diffusion coefficient $D(z) \\frac{nm^2}{ps}$")
-    plt.legend()
-    plt.ylabel("$W(z)$ (kJ/mol)")
-    plt.xlabel("$z$ (nm)")
-    plt.title("Free energy and diffusion profiles")
-    plt.ylim((0.0, 2.0*WELL_DEPTH))
-    plt.show()
-    exit()
-    """
-    
     stationary_dist_normalized = stationary_dist1 / sp_int.simps(
         stationary_dist1, dx=h_z)
     
     milestones = np.linspace(min_z, max_z, num_milestones)
-    #milestones = 0.1 * np.array(
-    #    [0.671, 5.401, 10.131, 14.861, 19.591, 24.321, 29.051, 33.781, 38.511, 43.241, 
-    #     47.971, 52.701, 57.431, 62.161, 66.89,  71.62,  76.35,  81.08,  
-    #     85.81,  90.54,  95.27 ])
-    
     milestone_h = milestones[1] - milestones[0]
     
     bulk_milestone = num_milestones - 1
     
-    #xi_bins, xi_values, xi_bins_ranges = analyze_log.make_xi_bins(num_xi_bins)
-    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones, SITUATION, MODE)
-    
+    xi_bins = samples.make_xi_bins(num_xi_bins, num_milestones, milestones, 
+                                   SITUATION)
     unslanted_energy_profiles = np.zeros((num_xi_bins, num_milestones))
     diffusion_profiles = np.zeros((num_xi_bins, num_milestones))
     counts_profiles = np.zeros((num_xi_bins, num_milestones))
@@ -351,7 +336,6 @@ if __name__ == "__main__":
     avg_time_vector_sum = np.zeros((num_milestones, 1))
     counts_sum = np.zeros(num_milestones)
     
-    #for i in range(num_xi_bins):
     for i, xi_bin in enumerate(xi_bins):
         xi = xi_bin.midpoint
         slanting_force = xi * force_magnitude
@@ -360,9 +344,10 @@ if __name__ == "__main__":
             z_s, slanting_force, potential_energy_func, 
             diffusion_coefficient_func)
         
-        transition_matrix, avg_time_vector, avg_time_matrix, rate_matrix, count_matrix \
-            = milestoning_statistics_from_profiles(
-            milestones, z_s, potential_energy_slant, diffusion_coefficient_slant, beta)
+        transition_matrix, avg_time_vector, avg_time_matrix, rate_matrix, \
+                count_matrix = milestoning_statistics_from_profiles(
+            milestones, z_s, potential_energy_slant, 
+            diffusion_coefficient_slant, beta)
         
         time_vector = make_time_vector_from_avg_time_vector(
             count_matrix, avg_time_vector)
@@ -376,37 +361,20 @@ if __name__ == "__main__":
         
         xi_bin.make_profiles(start_milestone_index, wrap_sink=False, 
                                      unitless_beta=beta)
-        #xi_bin.main_data_sample.diffusion_profile = np.ones(num_milestones) * D
         xi_bin.unslant_data_samples(force_magnitude, beta)
-        #plt.plot(milestones, xi_bin.main_data_sample.free_energy_profile, label=f"$\\xi$={xi:.2f}")
         xi_bin.counts = milestoning.compute_counts(count_matrix, num_milestones)
         
         xi_bin.make_profiles(start_milestone_index, wrap_sink=False, 
-                             unitless_beta=beta, data_sample=xi_bin.main_data_sample_unslanted)
-        
-        #plt.plot(milestones, xi_bin.main_data_sample.free_energy_profile, label=f"$\\xi$={xi:.2f}")
-        #plt.plot(milestones, xi_bin.main_data_sample_unslanted.free_energy_profile, label=f"$\\xi$={xi:.2f}")
-        
-        
-    
-    #plt.ylim((-0, 1.5*WELL_DEPTH))
-    
-    #plt.plot(z_s, potential_energy1, "g", label="Potential energy $W(z) (kJ/mol)$")
-    #plt.plot(milestones, energy_profile, "r", label="Recovered Potential energy $W(z) (kJ/mol)$")
-    #plt.plot(z_s, diffusion_coefficient1, "b", label="Diffusion coefficient $D(z) \\frac{nm^2}{ps}$")
-    #plt.plot(milestones, diffusion_profile, "k", label="Recovered Diffusion coefficient $D(z) \\frac{nm^2}{ps}$")
-    #plt.ylim((-WELL_DEPTH, 2.0*WELL_DEPTH))
-    #plt.ylim((-0, 2.0))
-    #plt.show()
+                             unitless_beta=beta, 
+                             data_sample=xi_bin.main_data_sample_unslanted)
     
     bulk_milestones = [bulk_milestone]
     
-    analysis = samples.Analysis(num_milestones, milestones, h_z, SITUATION, bulk_milestones)
+    analysis = samples.Analysis(num_milestones, milestones, h_z, SITUATION, 
+                                bulk_milestones)
     analysis.avg_unslanted_xi_bins(xi_bins)
     analysis.make_profiles(start_milestone_index, wrap_sink=False, 
                            unitless_beta=beta)
-    
-    # DEBUG
     analysis.make_times(start_milestone_index)
     
     print("original time:", time1, "ps")

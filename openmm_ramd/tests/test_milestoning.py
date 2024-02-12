@@ -5,8 +5,8 @@ Test openmm_ramd milestoning.py functions.
 import numpy as np
 
 import utils
-import openmm_ramd.analyze.parser as parser
-import openmm_ramd.analyze.milestoning as milestoning
+import openmm_ramd.analyze.modules.parser as parser
+import openmm_ramd.analyze.modules.milestoning as milestoning
 
 def test_uniform_milestone_locations(small_linear_logfile_persistent):
     num_milestones = 10
@@ -35,9 +35,9 @@ def test_make_milestoning_model_simple():
     frame_time = 50.0
     num_milestones = 3
     xi_bin_trajs = [
-        [[3.0, 0.0], [1.0, 0.0], [1.0, 0.0], [3.0, 0.0], [1.0, 0.0], [3.0, 0.0], [5.0, 0.0],
-         [3.0, 0.0], [1.0, 0.0], [3.0, 0.0], [5.0, 0.0], [7.0, 0.0], [5.0, 0.0],
-         [3.0, 0.0], [5.0, 0.0], [3.0, 0.0], [1.0, 0.0]],
+        [[3.0, 0.0], [1.0, 0.0], [1.0, 0.0], [3.0, 0.0], [1.0, 0.0], [3.0, 0.0],
+         [5.0, 0.0], [3.0, 0.0], [1.0, 0.0], [3.0, 0.0], [5.0, 0.0], [7.0, 0.0],
+         [5.0, 0.0], [3.0, 0.0], [5.0, 0.0], [3.0, 0.0], [1.0, 0.0]],
         [[1.0, 0.0], [3.0, 0.0], [3.0, 0.0], [5.0, 0.0], [3.0, 0.0], [5.0, 0.0],
          [3.0, 0.0], [3.0, 0.0], [1.0, 0.0]]
     ]

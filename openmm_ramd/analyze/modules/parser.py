@@ -276,25 +276,8 @@ def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
     
     return end_times, forceRAMD, timeStep
 
-# TODO: remove function
-def minimize_dot_product(trajectories):
-    data_matrix = np.zeros((3,3))
-    for i, trajectory in enumerate(trajectories):
-        for j, frame in enumerate(trajectory):
-            [ligx, ligy, ligz, accx, accy, accz] = frame
-            data_matrix[0,0] += ligx**2
-            data_matrix[0,1] += ligx*ligy
-            data_matrix[0,2] += ligx*ligz
-            data_matrix[1,0] += ligx*ligy
-            data_matrix[1,1] += ligy**2
-            data_matrix[1,2] += ligy*ligz
-            data_matrix[2,0] += ligx*ligz
-            data_matrix[2,1] += ligy*ligz
-            data_matrix[2,2] += ligz**2
-    
-    return np.linalg.solve(data_matrix, np.zeros((3,1)))
 
-# TODO: marked for removal
+# TODO: marked for removal as a method
 def get_cv_vec_traj_avg(trajectories):
     """
     This method doesn't tend to work well. MARKED FOR REMOVAL
@@ -333,6 +316,10 @@ def get_cv_vec_traj_avg(trajectories):
     return norm_avg_vec
 
 def get_mean_vec_for_frames_greater_than_boundary(trajectories, boundary):
+    """
+    Find a mean near the exit of the site (beyond a certain boundary) to
+    help ensure that CVs are going in a positive direction.
+    """
     sum_vec = np.zeros(3)
     counter = 0
     for i, trajectory in enumerate(trajectories):

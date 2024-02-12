@@ -19,7 +19,7 @@ import argparse
 import statistics
 import random
 
-import openmm_ramd.analyze.parser as parser
+import openmm_ramd.analyze.modules.parser as parser
 
 def bootstrap(completed_times, fraction=0.8, num_instances=200):
     """

@@ -4,7 +4,7 @@ Test openmm_ramd parser.py functions.
 
 import numpy as np
 
-import openmm_ramd.analyze.parser as parser
+import openmm_ramd.analyze.modules.parser as parser
 
 def test_parse_ramd_log_file(small_linear_logfile_persistent):
     [trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations,
@@ -64,3 +64,24 @@ def test_condense_trajectories(small_linear_logfile_persistent):
             assert frame[5] == one_dim_frame[1]
             
     # TODO: make test (perhaps) for onlyZ=False
+    return
+    
+def test_parse_ramd_log_file_quick(small_linear_logfile_persistent_quick):
+    [endTimes, forceRAMD, timeStep] = small_linear_logfile_persistent_quick
+    assert endTimes == [5612050]
+    assert forceRAMD == 0.1
+    assert timeStep == 0.002
+    return
+
+def test_get_cv_vec_principal_component():
+    mu = np.array([0.0, 0.0, 0.0])
+    sigma = np.array([[3.5, -1.8, -0.4], [-1.8, 2.1, -0.5], [-0.4, -0.5, 1.5]])
+    n = 1000
+    data = np.random.multivariate_normal(mu, sigma, size=(n))
+    trajectory = []
+    for i in range(n):
+        trajectory.append([float(data[i,0]), float(data[i,1]), float(data[i,2]),
+                           0.0, 0.0, 0.0])
+    trajectories = [trajectory]
+    vec = parser.get_cv_vec_principal_component(trajectories)
+    return

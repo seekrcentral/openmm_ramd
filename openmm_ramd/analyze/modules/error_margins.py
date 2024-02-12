@@ -9,7 +9,7 @@ from copy import deepcopy
 import numpy as np
 from scipy.stats import expon
 
-import openmm_ramd.analyze.samples as samples
+import openmm_ramd.analyze.modules.samples as samples
 
 def Q_to_K(Q):
     """Given a rate matrix Q, compute probability transition matrix K."""
