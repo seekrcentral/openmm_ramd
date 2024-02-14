@@ -20,7 +20,7 @@ import openmm_ramd.analyze.modules.milestoning as milestoning
 A_per_nm = 10.0
 
 def sigma_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10, 
-                toy_mode=False, num_error_samples=0, 
+                toy_mode=False, num_error_samples=100, 
                 stride_error_samples=None, skip_error_samples=None, 
                 cut_out_drift=False, verbose=False):
     if verbose:
