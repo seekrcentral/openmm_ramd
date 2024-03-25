@@ -57,6 +57,7 @@ def parse_ramd_log_file(ramd_log_filename):
     accel_COM_y = None
     accel_COM_z = None
     forceOutFreq = None
+    positionPrintFreq = None
     forceRAMD = None
     timeStep = None
     temperature = None
@@ -76,17 +77,27 @@ def parse_ramd_log_file(ramd_log_filename):
                 forceOutFreq_ = int(forceOutFreq_search.group(1))
                 if forceOutFreq is not None:
                     assert forceOutFreq == forceOutFreq_, \
-                        "The log file may not have conflicting values of "\
+                        "The log files may not have conflicting values of "\
                         "forceOutFreq"
                 else:
                     forceOutFreq = forceOutFreq_
+                    
+            positionPrintFreq_search = re.match("RAMD: positionPrintFreq * (\d+)", line)
+            if positionPrintFreq_search:
+                positionPrintFreq_ = int(positionPrintFreq_search.group(1))
+                if positionPrintFreq is not None:
+                    assert positionPrintFreq == positionPrintFreq_, \
+                        "The log files may not have conflicting values of "\
+                        "positionPrintFreq"
+                else:
+                    positionPrintFreq = positionPrintFreq_
                 
             forceRAMD_search = re.match("RAMD: forceRAMD * (\d+\.?\d*[eE]?[+-]?\d*)", line)
             if forceRAMD_search:
                 forceRAMD_ = float(forceRAMD_search.group(1))
                 if forceRAMD is not None:
                     assert forceRAMD == forceRAMD_, \
-                        "The log file may not have conflicting values of "\
+                        "The log files may not have conflicting values of "\
                         "forceRAMD"
                     # Also the start of a new simulation
                     num_simulations += 1
@@ -105,7 +116,7 @@ def parse_ramd_log_file(ramd_log_filename):
                 timeStep_ = float(timeStep_search.group(1))
                 if timeStep is not None:
                     assert timeStep == timeStep_, \
-                        "The log file may not have conflicting values of "\
+                        "The log files may not have conflicting values of "\
                         "timeStep"
                 else:
                     timeStep = timeStep_
@@ -115,7 +126,7 @@ def parse_ramd_log_file(ramd_log_filename):
                 temperature_ = float(temperature_search.group(1))
                 if temperature is not None:
                     assert temperature == temperature_, \
-                        "The log file may not have conflicting values of "\
+                        "The log files may not have conflicting values of "\
                         "temperature"
                 else:
                     temperature = temperature_
@@ -125,7 +136,7 @@ def parse_ramd_log_file(ramd_log_filename):
                 max_dist_ = float(max_dist_search.group(1))
                 if max_dist is not None:
                     assert max_dist == max_dist_, \
-                        "The log file may not have conflicting values of "\
+                        "The log files may not have conflicting values of "\
                         "maxDist"
                 else:
                     max_dist = max_dist_
@@ -208,13 +219,15 @@ def parse_ramd_log_file(ramd_log_filename):
             
     assert forceOutFreq is not None, \
         "The variable forceOutFreq was not assigned in the log file."
+    if positionPrintFreq is None:
+        positionPrintFreq = forceOutFreq
     assert forceRAMD is not None, \
         "The variable forceRAMD was not assigned in the log file."
     assert timeStep is not None, \
         "The variable timeStep was not assigned in the log file."
     
-    return trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations, \
-        temperature, max_dist
+    return trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, \
+        num_simulations, temperature, max_dist
 
 def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
     """
@@ -239,7 +252,7 @@ def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
                 forceRAMD_ = float(forceRAMD_search.group(1))
                 if forceRAMD is not None:
                     assert forceRAMD == forceRAMD_, \
-                        "The log file may not have conflicting values of "\
+                        "The log files may not have conflicting values of "\
                         "forceRAMD"
                     # Also the start of a new simulation
                     num_simulations += 1
@@ -248,13 +261,13 @@ def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
                     
                 else:
                     forceRAMD = forceRAMD_
-                
+            
             timeStep_search = re.match("RAMD: timeStep * (\d+\.?\d*[eE]?[+-]?\d*)", line)
             if timeStep_search:
                 timeStep_ = float(timeStep_search.group(1))
                 if timeStep is not None:
                     assert timeStep == timeStep_, \
-                        "The log file may not have conflicting values of "\
+                        "The log files may not have conflicting values of "\
                         "timeStep"
                 else:
                     timeStep = timeStep_
@@ -373,6 +386,7 @@ def get_cv_vec_principal_component(trajectories, mean_vec=None):
         norm_avg_vec[0] = -eig_vec[0,0]
         norm_avg_vec[1] = -eig_vec[1,0]
         norm_avg_vec[2] = -eig_vec[2,0]
+    
     return norm_avg_vec
 
 def condense_trajectories(trajectories, max_dist, onlyZ=False):

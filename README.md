@@ -51,7 +51,7 @@ fill out the prompts.
 With Conda working, install OpenMM:
 
 ```
-conda install -c conda-forge openmm=7.7
+conda install -c conda-forge openmm
 ```
 
 ### Install OpenMM RAMD
@@ -96,7 +96,7 @@ providing feedback, bug reports, or other comments.
 
 ### Copyright
 
-Copyright (c) 2023, Lane Votapka
+Copyright (c) 2024, Lane Votapka
 
 
 #### Acknowledgements

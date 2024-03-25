@@ -39,6 +39,7 @@ def bootstrap(completed_times, fraction=0.8, num_instances=200):
     # The residence time
     # The time taken for 50% of the trajectories to escape
     tau_comp = statistics.median(completed_times)
+    tau_mean = statistics.mean(completed_times)
     
     # interim residence time
     t_r = statistics.mean(bootstrap_times)
@@ -46,7 +47,7 @@ def bootstrap(completed_times, fraction=0.8, num_instances=200):
     # interim standard deviation of residence time distribution
     SD_r = statistics.stdev(bootstrap_times)
     
-    return tau_comp, t_r, SD_r
+    return tau_comp, tau_mean, t_r, SD_r
 
 def tau_ramd(ramd_log_files, include_all_times=False):
     forceRAMD = None
@@ -78,9 +79,8 @@ def tau_ramd(ramd_log_files, include_all_times=False):
     assert len(completed_times) > 1, \
         "More than one completed trajectory needed"
     
-    
-    tau_comp, t_r, SD_r = bootstrap(completed_times)
-    return tau_comp, t_r, SD_r
+    tau_comp, tau_mean, t_r, SD_r = bootstrap(completed_times)
+    return tau_comp, tau_mean, t_r, SD_r
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description=__doc__)
@@ -99,9 +99,10 @@ if __name__ == "__main__":
     ramd_log_files = args["ramd_log_files"]
     include_all_times = args["include_all_times"]
     
-    tau_comp, t_r, SD_r = tau_ramd(ramd_log_files, include_all_times)
+    tau_comp, tau_mean, t_r, SD_r = tau_ramd(ramd_log_files, include_all_times)
     
     print("Tau-RAMD results for this set of log files:")
     print("tau_comp (residence time):", tau_comp, "ps")
-    print("t_r (interim residence time):", t_r, "ps")
+    print("tau mean (residence time):", tau_mean, "ps")
+    print("t_r (median interim residence time):", t_r, "ps")
     print("SD_r (interim residence time standard deviation):", SD_r, "ps")

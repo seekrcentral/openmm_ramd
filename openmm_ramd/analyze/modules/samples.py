@@ -2,11 +2,13 @@
 Base functions, classes, and constants for openmm_ramd analysis.
 """
 
+import os
+from copy import deepcopy
+
 import PyGT
 import numpy as np
 from openmm import unit
 import matplotlib.pyplot as plt
-from copy import deepcopy
 
 import openmm_ramd.analyze.modules.milestoning as milestoning
 import openmm_ramd.analyze.modules.remove_slant as remove_slant
@@ -14,6 +16,11 @@ import openmm_ramd.analyze.modules.error_margins as error_margins
 
 kB_kcal_per_mol_per_kelvin = unit.MOLAR_GAS_CONSTANT_R.in_units_of(
     unit.kilocalories_per_mole / unit.kelvin)
+
+MAX_PLOT_ENERGY = 25.0 # kcal/mol
+FAST_RATE = 1e9
+TINY_RATE = 1e-9
+TINY_PROB = 1e-9
 
 class Data_sample():
     """
@@ -75,7 +82,8 @@ class Xi_bin():
         data_sample.free_energy_profile = remove_slant.make_energy_profile(
             data_sample.p_i, unitless_beta, starting_index)
         data_sample.diffusion_profile = milestoning.compute_diffusion_coefficients(
-            data_sample.Q, self.num_milestones, h)
+            data_sample.Q, data_sample.K, data_sample.free_energy_profile, 
+            self.milestones, unitless_beta)
         return
     
     def assign_unslanted_data(
@@ -194,10 +202,14 @@ class Analysis:
             self.main_data_sample.K, self.main_data_sample.t, 
             self.num_milestones, starting_index, self.situation, 
             wrap_sink=wrap_sink)
+        
         self.free_energy_profile = remove_slant.make_energy_profile(
             self.p_i, unitless_beta, starting_index)
+        #self.diffusion_profile = milestoning.compute_diffusion_coefficients(
+        #    self.main_data_sample.Q, self.num_milestones, self.h)
         self.diffusion_profile = milestoning.compute_diffusion_coefficients(
-            self.main_data_sample.Q, self.num_milestones, self.h)
+            self.main_data_sample.Q, self.main_data_sample.K, 
+            self.free_energy_profile, self.milestones, unitless_beta)
         p_i_list = []
         free_energy_profile_list = []
         diffusion_profile_list = []
@@ -208,8 +220,11 @@ class Analysis:
                     starting_index, self.situation, wrap_sink=wrap_sink)
                 free_energy_profile = remove_slant.make_energy_profile(
                     p_i, unitless_beta, starting_index)
+                #diffusion_profile = milestoning.compute_diffusion_coefficients(
+                #    data_sample.Q, self.num_milestones, self.h)
                 diffusion_profile = milestoning.compute_diffusion_coefficients(
-                    data_sample.Q, self.num_milestones, self.h)
+                    data_sample.Q, data_sample.K, free_energy_profile, 
+                    self.milestones, unitless_beta)
                 p_i_list.append(p_i)
                 free_energy_profile_list.append(free_energy_profile)
                 diffusion_profile_list.append(diffusion_profile)
@@ -242,8 +257,21 @@ class Analysis:
         # Recompute main diagonal
         for j in range(self.num_milestones):
             self.main_data_sample.Q[j, j] = 0.0
-            self.main_data_sample.Q[j, j] = -sum(self.main_data_sample.Q[:,j])
+            column_sum = sum(self.main_data_sample.Q[:,j])
+            assert column_sum >= 0.0, \
+                "Negative off-diagonal values in rate matrix not allowed"
+            if column_sum == 0.0:
+                if j > 0:
+                    self.main_data_sample.Q[j-1, j] += FAST_RATE
+                    self.main_data_sample.Q[j, j-1] += TINY_RATE
+                if j < self.num_milestones-1:
+                    self.main_data_sample.Q[j+1, j] += FAST_RATE
+                    self.main_data_sample.Q[j, j+1] += TINY_RATE
         
+        for j in range(self.num_milestones):
+            self.main_data_sample.Q[j, j] = 0.0
+            column_sum = sum(self.main_data_sample.Q[:,j])
+            self.main_data_sample.Q[j, j] = -column_sum
         
         time_estimate = compute_time(
             self.main_data_sample.Q, starting_index, self.bulk_milestones)
@@ -253,9 +281,24 @@ class Analysis:
             k_off_list = []
             for k, data_sample in enumerate(self.data_samples):
                 tmp_float128 = data_sample.Q.astype(np.longdouble)
+                
                 for j in range(self.num_milestones):
                     data_sample.Q[j, j] = 0.0
-                    data_sample.Q[j, j] = -sum(data_sample.Q[:,j])
+                    column_sum = sum(data_sample.Q[:,j])
+                    assert column_sum >= 0.0, \
+                        "Negative off-diagonal values in rate matrix not allowed"
+                    if column_sum == 0.0:
+                        if j > 0:
+                            data_sample.Q[j-1, j] += FAST_RATE
+                            data_sample.Q[j, j-1] += TINY_RATE
+                        if j < self.num_milestones-1:
+                            data_sample.Q[j+1, j] += FAST_RATE
+                            data_sample.Q[j, j+1] += TINY_RATE
+                
+                for j in range(self.num_milestones):
+                    data_sample.Q[j, j] = 0.0
+                    column_sum = sum(data_sample.Q[:,j])
+                    data_sample.Q[j, j] = -column_sum
                 
                 try:
                     time_estimate_val = compute_time(
@@ -287,25 +330,30 @@ class Analysis:
             self.k_off, self.k_off_error))
         return
     
-    def create_plots(self):
+    def create_plots(self, directory=None):
         pi_fig, ax1 = plt.subplots()
         ax1.errorbar(np.round(self.milestones[:-1], 3), self.free_energy_profile[:-1], 
                      yerr=self.free_energy_profile_err[:-1], color="r", ecolor="r", 
                      capsize=2)
+        upper_limit = np.min([np.max(self.free_energy_profile[:-1]), MAX_PLOT_ENERGY])
+        lower_limit = np.min(self.free_energy_profile[:-1])
+        ax1.set_ylim(bottom=lower_limit, top=upper_limit)
         ax1.set_xticks(np.round(self.milestones[:-1], 3), 
                        np.round(self.milestones[:-1], 3), rotation=75)
-        ax1.set_ylabel("\u0394G(z) (kcal/mol)", color="r")
-        ax1.set_xlabel("z(nm)")
+        ax1.set_ylabel("W(z) (kcal/mol)", color="r")
+        ax1.set_xlabel("z($\AA$)")
         
-        #ax2 = ax1.twinx()
-        #ax2.set_ylabel("D(z) ($nm^2/s$)", color="b")
-        #ax2.errorbar(np.round(self.milestones[:-2], 3), self.diffusion_profile[:-2], 
-        #             yerr=self.diffusion_profile_err[:-2], color="b", ecolor="b", 
-        #             capsize=2)
-        #ax2.set_ylim(0.0, 1.2*np.max(self.diffusion_profile))
+        ax2 = ax1.twinx()
+        ax2.set_ylabel("D(z) ($nm^2/ps$)", color="b")
+        ax2.errorbar(np.round(self.milestones[:-1], 3), self.diffusion_profile[:-1], 
+                     yerr=self.diffusion_profile_err[:-1], color="b", ecolor="b", 
+                     capsize=2)
+        ax2.set_ylim(0.0, 1.2*np.max(self.diffusion_profile[1:-2]))
         plt.tight_layout()
-        #pi_fig.savefig(os.path.join(image_directory, "profile.png"))
-        plt.show()
+        if directory is None:
+            plt.show()
+        else:
+            plt.savefig(os.path.join(directory, "pmf_diffusion.png"))
         
 def make_xi_bins(num_xi_bins, num_milestones, milestones, situation):
     xi_bins = []
@@ -373,7 +421,7 @@ def compute_time(rate_matrix, starting_index, bulk_milestones):
     return time_estimate
 
 def correct_rate_matrix_for_ramd(rate_matrix_avg):
-    end_rate = rate_matrix_avg[-3, -2]
+    #end_rate = rate_matrix_avg[-3, -2]
     """
     rate_matrix_avg[-1, -2] = 0.5 * end_rate
     rate_matrix_avg[-3, -2] = 0.5 * end_rate
@@ -381,25 +429,94 @@ def correct_rate_matrix_for_ramd(rate_matrix_avg):
     rate_matrix_avg[-2, -1] = 0.5 * end_rate
     rate_matrix_avg[-1, -1] = -0.5 * end_rate
     """
+    num_rows = rate_matrix_avg.shape[0]
+    for i in range(num_rows):
+        if (np.sum(rate_matrix_avg[:i,i]) \
+                + np.sum(rate_matrix_avg[(i+1):,i])) == 0:
+            # If the rate going left or right is zero, then escape this state quickly
+            if i > 0:
+                rate_matrix_avg[i-1,i] = FAST_RATE
+                rate_matrix_avg[i,i] -= FAST_RATE
+            if i < num_rows-1:
+                rate_matrix_avg[i+1,i] = FAST_RATE
+                rate_matrix_avg[i,i] -= FAST_RATE
+        elif np.sum(rate_matrix_avg[:i,i]) == 0:
+            # If the rate going left is zero, then make it a slow rate left
+            if i > 0:
+                rate_matrix_avg[i-1,i] = TINY_RATE
+                rate_matrix_avg[i,i] -= TINY_RATE
+                
+        elif np.sum(rate_matrix_avg[(i+1):,i]) == 0:
+            # If the rate going left is zero, then make it a slow rate left
+            if i < num_rows-1:
+                rate_matrix_avg[i+1,i] = TINY_RATE
+                rate_matrix_avg[i,i] -= TINY_RATE
+                
     return
 
-def correct_transition_matrix_for_ramd(transition_matrix_avg):
+def correct_transition_matrix_and_avg_time_vector_for_ramd(
+        transition_matrix_avg, avg_time_vector_avg):
     """
     transition_matrix_avg[-1, -2] = 0.5
     transition_matrix_avg[-3, -2] = 0.5
     transition_matrix_avg[-2, -1] = 1.0
     """
+    num_rows = transition_matrix_avg.shape[0]
+    for i in range(num_rows):
+        if np.sum(transition_matrix_avg[:,i]) == 0:
+            # If the prob going left or right is zero, then there is an equal escape probability
+            if i == 0:
+                transition_matrix_avg[i+1,i] = 1.0
+                
+            elif i == num_rows-1:
+                transition_matrix_avg[i-1,i] = 1.0
+                
+            else:
+                transition_matrix_avg[i-1,i] = 0.5
+                transition_matrix_avg[i+1,i] = 0.5
+            
+            avg_time_vector_avg[i] = 1.0 / FAST_RATE
+                
+        elif np.sum(transition_matrix_avg[:i,i]) == 0:
+            # If the prob going left is zero, then make it a slow rate left
+            if i > 0:
+                transition_matrix_avg[i-1,i] = TINY_PROB
+                transition_matrix_avg[i+1,i] -= TINY_PROB
+                
+        elif np.sum(transition_matrix_avg[(i+1):,i]) == 0:
+            # If the prob going left is zero, then make it a slow rate left
+            if i < num_rows-1:
+                transition_matrix_avg[i-1,i] -= TINY_PROB
+                transition_matrix_avg[i+1,i] = TINY_PROB
     return
 
-def correct_avg_time_vector_for_ramd(avg_time_vector_avg):
-    avg_time_vector_avg[-1] = avg_time_vector_avg[-2]
-    return
+#def correct_avg_time_vector_for_ramd(avg_time_vector_avg):
+#    avg_time_vector_avg[-1] = avg_time_vector_avg[-2]
+#    return
 
 def correct_milestoning_model_for_ramd(rate_matrix_avg, transition_matrix_avg,
                                        avg_time_vector_avg):
+    #print("rate_matrix_avg:")
+    #print(rate_matrix_avg)
+    
     correct_rate_matrix_for_ramd(rate_matrix_avg)
-    correct_transition_matrix_for_ramd(transition_matrix_avg)
-    correct_avg_time_vector_for_ramd(avg_time_vector_avg)
+    
+    #print("rate_matrix_avg fixed:")
+    #print(rate_matrix_avg)
+    
+    #print("transition_matrix_avg:")
+    #print(transition_matrix_avg)
+    #print("avg_time_vector_avg")
+    #print(avg_time_vector_avg)
+    
+    correct_transition_matrix_and_avg_time_vector_for_ramd(
+        transition_matrix_avg, avg_time_vector_avg)
+    
+    #print("transition_matrix_avg fixed:")
+    #print(transition_matrix_avg)
+    #print("avg_time_vector_avg fixed")
+    #print(avg_time_vector_avg)
+    #correct_avg_time_vector_for_ramd(avg_time_vector_avg)
     return
 
 def pretty_string_value_error(value, error, error_digits=2, use_unicode=True):

@@ -20,20 +20,22 @@ def small_linear_logfile_persistent():
     """
     Create logfile output that is persistent across the tests.
     """
-    trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations, \
-        temperature, maxDist = parser.parse_ramd_log_file(test_small_log)
-    return trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations, \
-        temperature, maxDist
+    trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, \
+        num_simulations, temperature, maxDist \
+        = parser.parse_ramd_log_file(test_small_log)
+    return trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, \
+        num_simulations, temperature, maxDist
 
 @pytest.fixture(scope="session")
 def large_linear_logfile_persistent():
     """
     Create logfile output that is persistent across the tests.
     """
-    trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations, \
-        temperature, maxDist = parser.parse_ramd_log_file(test_large_log)
-    return trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations, \
-        temperature, maxDist
+    trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, \
+        num_simulations, temperature, maxDist \
+        = parser.parse_ramd_log_file(test_large_log)
+    return trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, \
+        num_simulations, temperature, maxDist
 
 @pytest.fixture(scope="session")
 def small_linear_logfile_persistent_quick():

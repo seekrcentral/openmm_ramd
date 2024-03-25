@@ -2,13 +2,14 @@
 openmm_ramd/analyze/milestoning.py
 
 Prepare and utilize a milestoning model for RAMD simulation to use
-in a sigma-RAMD analysis.
+in a theta-RAMD analysis.
 """
 
 import numpy as np
 
 MATRIX_EXPONENTIAL = 9999999999
-DEFAULT_DIFFUSION_COEFF = 1.0
+DEFAULT_DIFFUSION_COEFF = 0.001
+NM_PER_A = 0.1
 
 def uniform_milestone_locations(one_dim_trajs, num_milestones, max_dist):
     """
@@ -27,6 +28,7 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, max_dist):
                 starting_cv_val = cv_val
             if cv_val < min_location:
                 min_location = cv_val
+                
             if cv_val > max_location:
                 max_location = cv_val
                 
@@ -40,6 +42,7 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, max_dist):
     # 2. a backward exit (where min_location is close to max_dist
     # 3. a two-path exit (where both min_location and max_location are close to
     #  max_dist
+    
     if min_location > -outer_edge:
         # a forward exit
         situation = 1
@@ -76,7 +79,16 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, max_dist):
     
     return milestones, min_location, max_location, starting_cv_val, \
         start_point_index, h, situation
-    
+
+def dest_milestone_from_cell_transition(new_cell_id, old_cell_id):
+    if new_cell_id == old_cell_id:
+        raise Exception("new_cell_id must be different from old_cell_id")
+    elif new_cell_id < old_cell_id:
+        dest_milestone = new_cell_id
+    elif new_cell_id > old_cell_id:
+        dest_milestone = new_cell_id - 1
+    return dest_milestone
+
 def make_milestoning_model(
         xi_bin_trajs, milestones, frame_time, num_milestones,
         remove_unbalanced_frame_counts=False):
@@ -100,7 +112,6 @@ def make_milestoning_model(
         first_times = np.zeros(num_milestones)
         first_transition = -np.ones(num_milestones)
         first_milestone = None
-        
         for j, frame in enumerate(traj):
             [cv_val, xi_val] = frame
             # Find what cell it's in
@@ -113,8 +124,8 @@ def make_milestoning_model(
                     break
             if (old_cell_id is not None) and (new_cell_id != old_cell_id):
                 # then a milestone transition has happened
-                diff = new_cell_id - old_cell_id
-                dest_milestone = new_cell_id - (diff + 1) // 2
+                dest_milestone = dest_milestone_from_cell_transition(
+                    new_cell_id, old_cell_id)
                 if src_milestone != dest_milestone:
                     if src_milestone is not None:
                         if first_milestone is None:
@@ -123,10 +134,10 @@ def make_milestoning_model(
                         if first_times[dest_milestone] == 0.0:
                             first_times[dest_milestone] = src_time
                             first_transition[dest_milestone] = src_milestone
-                            
+                        
                         count_matrix[dest_milestone, src_milestone] += 1
-                        if j < len(traj)-1:
-                            time_matrix[dest_milestone, src_milestone] += src_time
+                        #if j < len(traj)-1:
+                        time_matrix[dest_milestone, src_milestone] += src_time
                         
                     src_milestone = dest_milestone
                     src_time = 0.0
@@ -170,7 +181,11 @@ def make_milestoning_model(
         for j in range(num_milestones):
             if count_matrix[j,i] > 0.0:
                 avg_time_matrix[j, i] = time_matrix[j, i] / count_matrix[j,i]
-                
+    
+    # TODO: replace above for-loop with functions below
+    #avg_time_vector = make_avg_time_vector(num_milestones, time_vector, count_matrix)
+    #avg_time_matrix = make_avg_time_matrix(num_milestones, time_matrix, count_matrix)
+    
     #avg_time_vector[0, 0] *= 0.5 # times need to be cut in half for end states
     #avg_time_vector_up[0, 0] *= 0.5
     #avg_time_vector_down[0, 0] *= 0.5
@@ -189,6 +204,24 @@ def make_transition_matrix(num_milestones, count_matrix):
                 transition_matrix[j,i] = count_matrix[j,i] / column_sum
                 
     return transition_matrix
+
+def make_avg_time_vector(num_milestones, total_time_vector, count_matrix):
+    avg_time_vector = np.zeros((num_milestones, 1))
+    for i in range(num_milestones): # column index
+        column_sum = np.sum(count_matrix[:,i])
+        if column_sum > 0.0:
+            avg_time_vector[i, 0] = total_time_vector[i, 0] / column_sum
+    
+    return avg_time_vector
+    
+def make_avg_time_matrix(num_milestones, total_time_matrix, count_matrix):
+    avg_time_matrix = np.zeros((num_milestones, num_milestones))
+    for i in range(num_milestones): # column index
+        for j in range(num_milestones):
+            if count_matrix[j,i] > 0.0:
+                avg_time_matrix[j, i] = total_time_matrix[j, i] / count_matrix[j,i]
+                
+    return avg_time_matrix
 
 def make_rate_matrix(num_milestones, transition_matrix, avg_time_vector):
     rate_matrix = np.zeros((num_milestones, num_milestones), dtype=np.longdouble)
@@ -211,9 +244,8 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
     #initial_prob_vector = np.zeros((1, num_milestones))
     #initial_prob_vector[0,0] = 1.0
     initial_prob_vector = np.ones((1, num_milestones))
-    
+    transition_matrix_with_leak = np.copy(transition_matrix)
     if (situation == 1) or (situation == 3):
-        transition_matrix_with_leak = np.copy(transition_matrix)
         if transition_matrix_with_leak[-2, -1] < TINY_PROB:
             transition_matrix_with_leak[-2, -1] = 1.0
             avg_time_vector[-1, 0] = avg_time_vector[-2, 0]
@@ -225,7 +257,6 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
             transition_matrix_with_leak[start_index, -1] = 1.0
             
     if (situation == 2) or (situation == 3):
-        transition_matrix_with_leak = np.copy(transition_matrix)
         if transition_matrix_with_leak[1, 0] < TINY_PROB:
             transition_matrix_with_leak[1, 0] = 1.0
             avg_time_vector[0, 0] = avg_time_vector[1, 0]
@@ -252,9 +283,14 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
             transition_matrix_with_leak[i, i] += TINY_PROB
             transition_matrix_with_leak[i-1, i] -= 0.5*TINY_PROB
             transition_matrix_with_leak[i+1, i] -= 0.5*TINY_PROB
-        
+        else:
+            transition_matrix_with_leak[i-1, i] += TINY_PROB
+            transition_matrix_with_leak[i+1, i] += TINY_PROB
+            column_sum = np.sum(transition_matrix_with_leak[:, i])
+            transition_matrix_with_leak[:, i] /= column_sum
+    
     q_i = initial_prob_vector @ np.linalg.matrix_power(
-        transition_matrix_with_leak.T, MATRIX_EXPONENTIAL)
+        transition_matrix_with_leak.T, MATRIX_EXPONENTIAL)    
     if np.sum(q_i) > 0.0:
         q_i = q_i / np.sum(q_i)
     
@@ -277,8 +313,67 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
     
     return p_i
 
-def compute_diffusion_coefficients(rate_matrix, num_milestones, milestone_spacing):
+def compute_diffusion_coefficients(
+        rate_matrix, transition_matrix, free_energy_profile, milestones, beta):
+    num_milestones = len(milestones)
     diffusion_coeffs = np.zeros(num_milestones)
+    for i in range(num_milestones):
+        if i == 0:
+            if rate_matrix[1, 0] == 0.0:
+                diffusion_coeffs[0] = DEFAULT_DIFFUSION_COEFF
+                continue
+                
+            incubation_time = 1.0 / rate_matrix[1, 0]
+            span = NM_PER_A * (milestones[1] - milestones[0])
+            energy_diff = (free_energy_profile[1] - free_energy_profile[0])
+            diffusion_coeffs[0] = 0.5 * span**2 * np.exp(beta*energy_diff/3.0) \
+                / incubation_time
+
+        elif i == num_milestones - 1:
+            last = num_milestones - 1
+            if rate_matrix[last-1, last] == 0.0:
+                diffusion_coeffs[last] = DEFAULT_DIFFUSION_COEFF
+                continue
+            
+            incubation_time = 1.0 / rate_matrix[last-1, last]
+            span = NM_PER_A * (milestones[last] - milestones[last-1])
+            energy_diff = (free_energy_profile[last] \
+                           - free_energy_profile[last-1])
+            if rate_matrix[last-1, last] == 0.0:
+                diffusion_coeffs[last] = diffusion_coeffs[last-1]
+            else:
+                diffusion_coeffs[last] = 0.5 * span**2 \
+                    * np.exp(-beta*energy_diff/3.0) / incubation_time
+            
+        else:
+            prob1 = sum(transition_matrix[:i, i])
+            prob2 = sum(transition_matrix[i+1:, i])
+            if not np.isclose(prob1 + prob2, 1.0):
+                diffusion_coeffs[i] == DEFAULT_DIFFUSION_COEFF
+                continue
+                
+            if rate_matrix[i,i] == 0.0:
+                diffusion_coeffs[i] = DEFAULT_DIFFUSION_COEFF
+                continue
+            
+            incubation_time = -1.0 / rate_matrix[i,i]
+            span1 = NM_PER_A * (milestones[i] - milestones[i-1])
+            span2 = NM_PER_A * (milestones[i+1] - milestones[i])
+            energy_diff1 = (free_energy_profile[i] - free_energy_profile[i-1])
+            energy_diff2 = (free_energy_profile[i+1] - free_energy_profile[i])
+            diffusion_coeffs[i] += 0.5 * prob1 * span1**2 \
+                * np.exp(-beta*energy_diff1/3.0) / incubation_time
+            diffusion_coeffs[i] += 0.5 * prob2 * span2**2 \
+                * np.exp(beta*energy_diff2/3.0) / incubation_time
+        
+        if diffusion_coeffs[i] == 0.0:
+            diffusion_coeffs[i] = DEFAULT_DIFFUSION_COEFF
+    return diffusion_coeffs
+
+# The old way of doing diffusion coeffs
+def compute_diffusion_coefficients_OLD(rate_matrix, num_milestones, milestone_spacing_in_A):
+    diffusion_coeffs = np.zeros(num_milestones)
+    milestone_spacing = 0.1 * milestone_spacing_in_A
     for i in range(num_milestones):
         if i == 0:
             diffusion_coeffs[0] = 0.5 * milestone_spacing**2 \
@@ -300,12 +395,22 @@ def compute_diffusion_coefficients(rate_matrix, num_milestones, milestone_spacin
         
         if diffusion_coeffs[i] == 0.0:
             diffusion_coeffs[i] = DEFAULT_DIFFUSION_COEFF
-    
     return diffusion_coeffs
 
 def compute_counts(count_matrix, num_milestones):
     counts = np.zeros(num_milestones)
     for i in range(num_milestones):
-        counts[i] = np.sum(count_matrix[:,i])
-    
+        column_sum = np.sum(count_matrix[:,i])
+        # This was the old way of doing it
+        counts[i] = column_sum
+        # But this was problematic, because if a transition were ever one-way
+        # Then there would be a huge jump in potential, which would be bad. So
+        # If either side of the matrix sums to 0, then we should set the 
+        # count matrix to zero also.
+        #if (np.sum(count_matrix[:i,i]) == 0) or (np.sum(count_matrix[(i+1):,i]) == 0):
+        #    # It really should be zero, but that tends to cause problems
+        #    counts[i] = 1
+        #else:
+        #    counts[i] = column_sum
+            
     return counts

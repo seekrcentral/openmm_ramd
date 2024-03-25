@@ -46,7 +46,7 @@ class RAMDSimulation(openmm_app.Simulation):
                  force_out_freq=50, md_steps=0, md_start="no", r_min_md=0, 
                  max_dist=50, debug_level=0, platform=None, 
                  properties=None, log_file_name=None, ramd_force_group=1,
-                 ramd_seed=0, align_receptor=False):
+                 ramd_seed=0, align_receptor=False, position_print_freq=None):
         self.log_file_name = log_file_name
         self.logger = None
         if log_file_name is not None:
@@ -64,6 +64,11 @@ class RAMDSimulation(openmm_app.Simulation):
         self.ramd_steps = ramd_steps
         self.r_min_ramd = r_min_ramd
         self.force_out_freq = force_out_freq
+        if position_print_freq == None:
+            self.position_print_freq = self.force_out_freq
+        else:
+            self.position_print_freq = position_print_freq
+            
         self.md_steps = md_steps
         self.md_start = md_start
         self.r_min_md = r_min_md
@@ -88,14 +93,14 @@ class RAMDSimulation(openmm_app.Simulation):
         self.align_receptor = align_receptor
         
         if platform is None:
-            assert properties is None, "If platform is not set, properties cannot "\
-                "be set either."
+            assert properties is None, "If platform is not set, properties "\
+                "cannot be set either."
             #simulation = openmm_app.Simulation(topology, system, integrator)
             super(RAMDSimulation, self).__init__(
                 topology, system, integrator)
         else:
-            assert properties is not None, "If platform is set, properties must "\
-                "also be set."
+            assert properties is not None, "If platform is set, properties "\
+                "must also be set."
             #simulation = openmm_app.Simulation(topology, system, integrator, 
             #                                   platform, properties)
             super(RAMDSimulation, self).__init__(
@@ -108,14 +113,16 @@ class RAMDSimulation(openmm_app.Simulation):
     
     def check_inputs(self):
         # md_steps has not yet been implemented
-        assert self.md_steps == 0, "RAMD with MD is not yet implemented: mdSteps "\
-            "must be zero."
-        #assert ramd_steps % force_out_freq == 0, "The number of RAMD steps is "\
-        #    "not a multiple of 'force_out_freq'."
-        assert self.md_start == "no", "RAMD with MD is not yet implemented: mdStart "\
-            "must be 'no'."
-        assert self.r_min_md == 0, "RAMD with MD is not yet implemented: rMinMd "\
-            "must be zero."
+        assert self.md_steps == 0, "RAMD with MD is not yet implemented: "\
+            "mdSteps must be zero."
+        assert self.md_start == "no", "RAMD with MD is not yet implemented: "\
+            "mdStart must be 'no'."
+        assert self.r_min_md == 0, "RAMD with MD is not yet implemented: "\
+            "rMinMd must be zero."
+        assert self.force_out_freq % self.ramd_steps == 0, \
+            "ForceOutFreq must be a multiple of ramdSteps."
+        assert self.position_print_freq % self.ramd_steps == 0, \
+            "PositionPrintFreq must be a multiple of ramdSteps."
         return
     
     def max_distance_exceeded(self, timestep):
@@ -191,7 +198,8 @@ class RAMDSimulation(openmm_app.Simulation):
     def RAMD_start(self):
         self.counter = 0
         if self.logger is not None:
-            self.logger.log("ramdSteps                {}".format(self.ramd_steps))
+            self.logger.log("ramdSteps                {}".format(
+                self.ramd_steps))
             self.logger.log("openmmVersion            {}".format(
                 openmm.version.full_version))
             #self.logger.log("forceRAMD                {}".format(
@@ -200,20 +208,27 @@ class RAMDSimulation(openmm_app.Simulation):
                     kcal_per_mole_per_angstrom)))
             self.logger.log("rMinRamd                 {} A".format(
                 self.r_min_ramd.value_in_unit(unit.angstroms)))
-            self.logger.log("forceOutFreq             {}".format(self.force_out_freq))
-            self.logger.log("timeStep                 {}".format(self.integrator.getStepSize()))
-            self.logger.log("temperature              {}".format(self.integrator.getTemperature()))
+            self.logger.log("forceOutFreq             {}".format(
+                self.force_out_freq))
+            self.logger.log("positionPrintFreq        {}".format(
+                self.position_print_freq))
+            self.logger.log("timeStep                 {}".format(
+                self.integrator.getStepSize()))
+            self.logger.log("temperature              {}".format(
+                self.integrator.getTemperature()))
             self.logger.log("protAtoms                {}".format(
                 self.force_handler.receptor_atom_indices))
             self.logger.log("ligAtoms                 {}".format(
                 self.force_handler.ligand_atom_indices))
-            self.logger.log("ramdSeed                 {}".format(self.ramd_seed))
+            self.logger.log("ramdSeed                 {}".format(
+                self.ramd_seed))
             self.logger.log("mdSteps                  {}".format(self.md_steps))
             self.logger.log("mdStart                  {}".format(self.md_start))
             self.logger.log("rMinMd                   {}".format(self.r_min_md))
             self.logger.log("maxDist                  {} A".format(
                 self.max_dist.value_in_unit(unit.angstroms)))
-            self.logger.log("debugLevel               {}".format(self.debug_level))
+            self.logger.log("debugLevel               {}".format(
+                self.debug_level))
         
         self.check_inputs()
         if self.force_handler.receptor_atom_indices is not None\
@@ -237,22 +252,29 @@ class RAMDSimulation(openmm_app.Simulation):
         random_direction_magnitude = np.linalg.norm(random_direction)
         if self.logger is not None:
             self.logger.log("Pure RAMD simulation is performed")
-            lig_indices_str = " ".join(map(str, self.force_handler.ligand_atom_indices))
+            lig_indices_str = " ".join(
+                map(str, self.force_handler.ligand_atom_indices))
             self.logger.log("Atoms subject to the random force are: {}".format(
                 lig_indices_str))
             self.logger.log(f"calculated ligand mass {lig_mass}")
-            self.logger.timestep_log("***** INITIALIZE RAMD SIMULATION *****", self.counter)
-            self.logger.timestep_log("   >>> minimum travelled distance (A): {}"\
-                                     .format(self.r_min_ramd.value_in_unit(unit.angstroms)), self.counter)
+            self.logger.timestep_log("***** INITIALIZE RAMD SIMULATION *****", 
+                                     self.counter)
+            self.logger.timestep_log(
+                "   >>> minimum travelled distance (A): {}".format(
+                    self.r_min_ramd.value_in_unit(unit.angstroms)), 
+                                     self.counter)
             vMin = self.r_min_ramd / self.ramd_steps
-            self.logger.timestep_log("   >>> minimum velocity (A/fs): {}"\
-                                     .format(vMin.value_in_unit(unit.angstroms)), self.counter)
-            self.logger.timestep_log("   >>> LIGAND COM IS: {} A".format(lig_com.value_in_unit(unit.angstroms)), self.counter)
+            self.logger.timestep_log(
+                "   >>> minimum velocity (A/fs): {}".format(
+                    vMin.value_in_unit(unit.angstroms)), self.counter)
+            self.logger.timestep_log("   >>> LIGAND COM IS: {} A".format(
+                lig_com.value_in_unit(unit.angstroms)), self.counter)
             if self.force_handler.receptor_atom_indices is not None:
-                self.logger.timestep_log("   >>> PROTEIN COM IS: {} A".format(rec_com.value_in_unit(unit.angstroms)), self.counter)
+                self.logger.timestep_log("   >>> PROTEIN COM IS: {} A".format(
+                    rec_com.value_in_unit(unit.angstroms)), self.counter)
                 self.logger.timestep_log(
-                    "   >>> DISTANCE LIGAND COM - PROTEIN COM IS: DIST = {} A".format(
-                        lig_prot_com_distance), self.counter)
+                    "   >>> DISTANCE LIGAND COM - PROTEIN COM IS: DIST = {} A".\
+                    format(lig_prot_com_distance), self.counter)
             self.logger.timestep_log(
                 "   >>> INITIAL RANDOM DIRECTION: {} :: ||r|| = {}".format(
                     random_direction, random_direction_magnitude), self.counter)
@@ -265,75 +287,88 @@ class RAMDSimulation(openmm_app.Simulation):
     
     def RAMD_step(self, numSteps=50):
         self.step(numSteps)
-        state = self.context.getState(getPositions = True)
-        positions = state.getPositions()
-        lig_com = self.get_lig_com(positions)
-        if self.force_handler.receptor_atom_indices is not None:
-            rec_com = self.get_rec_com(positions, skip_alignment=True)
-            lig_prot_com_distance = np.linalg.norm(
-                lig_com.value_in_unit(unit.angstroms) \
-                - rec_com.value_in_unit(unit.angstroms))
-        else:
-            lig_prot_com_distance = np.linalg.norm(
-                lig_com.value_in_unit(unit.angstroms))
+        # Obtain positions for either a possible force update or position print
+        if (self.counter % self.force_out_freq == 0) \
+                or (self.counter % self.position_print_freq == 0):
+            state = self.context.getState(getPositions = True)
+            positions = state.getPositions()
+            lig_com = self.get_lig_com(positions)
+            if self.force_handler.receptor_atom_indices is not None:
+                rec_com = self.get_rec_com(positions, skip_alignment=True)
+                lig_prot_com_distance = np.linalg.norm(
+                    lig_com.value_in_unit(unit.angstroms) \
+                    - rec_com.value_in_unit(unit.angstroms))
+            else:
+                lig_prot_com_distance = np.linalg.norm(
+                    lig_com.value_in_unit(unit.angstroms))
         
-        force_direction = self.force_handler.force_vector
-        force_direction_magnitude = np.linalg.norm(
-            force_direction.value_in_unit(kcal_per_mole_per_angstrom))
-        random_direction = self.force_handler.random_vector
-        random_direction_magnitude = np.linalg.norm(random_direction)
-        
-        lig_walk_distance = np.linalg.norm(
-            lig_com.value_in_unit(unit.angstroms) \
-            - self.old_lig_com.value_in_unit(unit.angstroms)) * unit.angstroms
-        if self.counter % self.force_out_freq == 0:
+        if self.counter % self.position_print_freq == 0:
             if self.logger is not None:
-                self.logger.force_log("> LIGAND COM IS: {} A".format(lig_com.value_in_unit(unit.angstroms)), self.counter)
+                self.logger.force_log("> LIGAND COM IS: {} A".format(
+                    lig_com.value_in_unit(unit.angstroms)), self.counter)
                 if self.force_handler.receptor_atom_indices is not None:
-                    self.logger.force_log("> PROTEIN COM IS: {} A".format(rec_com.value_in_unit(unit.angstroms)), self.counter)
+                    self.logger.force_log("> PROTEIN COM IS: {} A".format(
+                        rec_com.value_in_unit(unit.angstroms)), self.counter)
+        
+        if (self.counter % self.force_out_freq == 0):
+            force_direction = self.force_handler.force_vector
+            force_direction_magnitude = np.linalg.norm(
+                force_direction.value_in_unit(kcal_per_mole_per_angstrom))
+            random_direction = self.force_handler.random_vector
+            random_direction_magnitude = np.linalg.norm(random_direction)
+            
+            lig_walk_distance = np.linalg.norm(
+                lig_com.value_in_unit(unit.angstroms) \
+                - self.old_lig_com.value_in_unit(unit.angstroms)) * unit.angstroms
+            
+            if self.logger is not None:
                 self.logger.timestep_log(
                     "> EXTERNAL FORCE VECTOR (F): {}; ||F|| = {}".format(
-                        force_direction, force_direction_magnitude), self.counter)
+                        force_direction, force_direction_magnitude), 
+                                         self.counter)
                 self.logger.timestep_log(
                     "> EXTERNAL FORCE DIRECTION (r): {}; ||r|| = {}".format(
-                        random_direction, random_direction_magnitude), self.counter)
+                        random_direction, random_direction_magnitude), 
+                                         self.counter)
+            
+            if lig_walk_distance <= self.r_min_ramd:
+                self.recompute_RAMD_force()
+                if self.logger is not None:
+                    self.logger.timestep_log(
+                        "   >>> THE DISTANCE TRAVELLED BY THE LIGAND IS: {} (< {}) A"\
+                        .format(lig_walk_distance, self.r_min_ramd), self.counter)
+                    self.logger.timestep_log(
+                        "   >>> CONTINUE WITH {} STEPS OF RAMD SIMULATION".format(
+                            self.ramd_steps), self.counter)
+                    random_direction = self.force_handler.random_vector
+                    random_direction_magnitude = np.linalg.norm(random_direction)
+                    self.logger.timestep_log(
+                        "   >>> CHANGE ACCELERATION DIRECTION TO: {}; ||r|| = {}"\
+                            .format(random_direction, random_direction_magnitude), 
+                            self.counter)
+            
+            else:
+                if self.logger is not None:
+                    self.logger.timestep_log(
+                        "   >>> THE DISTANCE TRAVELLED BY THE LIGAND IS: {} (> {})"\
+                        .format(lig_walk_distance, self.r_min_ramd), self.counter)
+                    self.logger.timestep_log(
+                        "   >>> CONTINUE WITH {} STEPS OF RAMD SIMULATION".format(
+                            self.ramd_steps), self.counter)
+                    self.logger.timestep_log(
+                        "   >>> KEEP PREVIOUS ACCELERATION DIRECTION: {}; ||r|| = {}".format(
+                            random_direction, random_direction_magnitude), self.counter)
         
+        # Unnecessary output
         # These are done every RAMD evaluation
-        if self.logger is not None:
-            self.logger.timestep_log(
-                "***** EVALUATE {} RAMD STEPS AT TIMESTEP {} *****".format(
-                    self.ramd_steps, self.counter), self.counter)
-            if self.force_handler.receptor_atom_indices is not None:
-                self.logger.timestep_log(
-                    "   >>> DISTANCE LIGAND COM - PROTEIN COM IS: DIST = {} A".format(
-                        lig_prot_com_distance), self.counter)
-        
-        if lig_walk_distance <= self.r_min_ramd:
-            self.recompute_RAMD_force()
-            if self.logger is not None:
-                self.logger.timestep_log(
-                    "   >>> THE DISTANCE TRAVELLED BY THE LIGAND IS: {} (< {}) A"\
-                    .format(lig_walk_distance, self.r_min_ramd), self.counter)
-                self.logger.timestep_log(
-                    "   >>> CONTINUE WITH {} STEPS OF RAMD SIMULATION".format(
-                        self.ramd_steps), self.counter)
-                random_direction = self.force_handler.random_vector
-                random_direction_magnitude = np.linalg.norm(random_direction)
-                self.logger.timestep_log(
-                    "   >>> CHANGE ACCELERATION DIRECTION TO: {}; ||r|| = {}".format(
-                        random_direction, random_direction_magnitude), self.counter)
-        
-        else:
-            if self.logger is not None:
-                self.logger.timestep_log(
-                    "   >>> THE DISTANCE TRAVELLED BY THE LIGAND IS: {} (> {})"\
-                    .format(lig_walk_distance, self.r_min_ramd), self.counter)
-                self.logger.timestep_log(
-                    "   >>> CONTINUE WITH {} STEPS OF RAMD SIMULATION".format(
-                        self.ramd_steps), self.counter)
-                self.logger.timestep_log(
-                    "   >>> KEEP PREVIOUS ACCELERATION DIRECTION: {}; ||r|| = {}".format(
-                        random_direction, random_direction_magnitude), self.counter)
+        #if self.logger is not None:
+        #    self.logger.timestep_log(
+        #        "***** EVALUATE {} RAMD STEPS AT TIMESTEP {} *****".format(
+        #            self.ramd_steps, self.counter), self.counter)
+        #    if self.force_handler.receptor_atom_indices is not None:
+        #        self.logger.timestep_log(
+        #            "   >>> DISTANCE LIGAND COM - PROTEIN COM IS: DIST = {} A"\
+        #                .format(lig_prot_com_distance), self.counter)
         
         self.counter += self.ramd_steps
         self.old_lig_com = lig_com
@@ -341,6 +376,7 @@ class RAMDSimulation(openmm_app.Simulation):
     
     def run_RAMD_sim(self, max_num_steps=1e8):
         self.counter = 0
+        self.context.setTime(0.0)
         start_lig_prot_dist = self.RAMD_start()
         # Do the simulation steps and loop here. These are done every step
         while self.counter < max_num_steps:

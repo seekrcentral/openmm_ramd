@@ -14,7 +14,7 @@ residence times from RAMD simulations of different force constants in order
 to estimate the residence time of a ligand-receptor complex in the absence
 of any RAMD force.
 """
-
+import os
 import argparse
 from collections import defaultdict
 
@@ -28,9 +28,10 @@ import openmm_ramd.analyze.modules.samples as samples
 
 NUM_MONTE_CARLO_SAMPLES = 100
 NUM_ASSOC_PROP_STEPS = 1000
+FS_PER_PS = 1000
 
 def plot_fitting_extrapol(force_list, log_log_time_list, polynomial, 
-                          intercept_avg, intercept_std):
+                          intercept_avg, intercept_std, image_directory=None):
     """
     
     """
@@ -40,14 +41,19 @@ def plot_fitting_extrapol(force_list, log_log_time_list, polynomial,
     ax.set_xlim(left=-0.01, right=np.max(force_list)+0.01)
     
     ax = sns.regplot(data=data, x="x", y="y", truncate=False, ci=66.67, ax=ax)
-    ax.set(xlabel="$f$, kcal/(mol $\\cdot$ A)", ylabel="ln(ln($\\tau$ / 1ps))", 
+    ax.set(xlabel="$f$, kcal/(mol $\\cdot$ A)", ylabel="ln(ln($\\tau$ / 1fs))", 
            title="RAMD Force Effect on Residence Time(s)")
     ax.plot([0.0], [intercept_avg], marker="*")
     
-    plt.show()
+    if image_directory is None:
+        plt.show()
+    else:
+        plt.savefig(os.path.join(image_directory, "maximova_extrapolation.png"))
+    
+    plt.close(fig)
     return
 
-def plot_association_proportion(force_const_dict_times):
+def plot_association_proportion(force_const_dict_times, image_directory=None):
     """
     
     """
@@ -66,9 +72,16 @@ def plot_association_proportion(force_const_dict_times):
         plt.ylabel("ln($N(t)$/$N(0)$)")
         plt.xlabel("$t$ ps")
         plt.tight_layout()
-        plt.show()
+        if image_directory is None:
+            plt.show()
+        else:
+            plt.savefig(os.path.join(
+                image_directory, "maximova_association_probabilities.png"))
+        
+        plt.close()
 
-def fit_and_extrapolate(force_const_dict_times):
+def fit_and_extrapolate(force_const_dict_times, image_directory=None, 
+                        make_plot=True, silent=False):
     """
     
     """
@@ -96,10 +109,11 @@ def fit_and_extrapolate(force_const_dict_times):
     for _ in range(NUM_MONTE_CARLO_SAMPLES):
         log_log_time_sample = np.random.normal(
             loc=intercept_avg, scale=intercept_std)
-        time_sampled_values.append(np.exp(np.exp(log_log_time_sample)))
+        time_sampled_values.append(np.exp(np.exp(log_log_time_sample)) \
+                                   / FS_PER_PS)
     
     median_time = np.median(time_sampled_values)
-    time_0 = np.exp(np.exp(intercept_avg))
+    time_0 = np.exp(np.exp(intercept_avg)) / FS_PER_PS
     
     times_minus_median = []
     for time in time_sampled_values:
@@ -107,21 +121,26 @@ def fit_and_extrapolate(force_const_dict_times):
         
     median_diff = np.median(times_minus_median)
     
-    print("Printing values extrapolated to zero force:")
-    print("ln(ln(tau_0/ps)):", samples.pretty_string_value_error(
-        intercept_avg, intercept_std))
-    print("tau_0:", samples.pretty_string_value_error(
-        time_0, median_diff), "ps")
+    if not silent:
+        print("Printing values extrapolated to zero force:")
+        print("ln(ln(tau_0/fs)):", samples.pretty_string_value_error(
+            intercept_avg, intercept_std))
+        print("tau_0:", samples.pretty_string_value_error(
+            time_0, median_diff), "ps")
     
-    plot_fitting_extrapol(
-        force_list, log_log_time_list, polynomial, intercept_avg, intercept_std)
+    if make_plot:
+        plot_fitting_extrapol(
+            force_list, log_log_time_list, polynomial, intercept_avg, intercept_std,
+            image_directory)
     
     return time_0, median_diff
 
-def maximova(ramd_log_files, include_all_times):
+def maximova(ramd_log_files, include_all_times=False, image_directory=None,
+             make_plot=True, silent=False):
     force_const_dict_steps = defaultdict(list)
     time_step = None
-    print("Reading log files...")
+    if not silent:
+        print("Reading log files...")
     for ramd_log_filename in ramd_log_files:
         end_steps, forceRAMD_, time_step_ \
             = parser.parse_ramd_log_file_quick(
@@ -139,17 +158,21 @@ def maximova(ramd_log_files, include_all_times):
     for force_const, end_steps in force_const_dict_steps.items():
         for end_step in end_steps:
             if end_step is not None:
-                force_const_dict_times[force_const].append(end_step * time_step)
+                force_const_dict_times[force_const].append(
+                    end_step * time_step * FS_PER_PS)
     
-    for force_const, end_times in force_const_dict_times.items():
-        print(f"Found {len(end_times)} trajectories for force constant "\
-              f"{force_const} kcal/(mol * A).")
+    if not silent:
+        for force_const, end_times in force_const_dict_times.items():
+            print(f"Found {len(end_times)} trajectories for force constant "\
+                  f"{force_const} kcal/(mol * A).")
         
     assert len(force_const_dict_steps) > 1, "Simulations with more than one "\
         "force constant needed to perform fitting and extrapolation."
     
-    print("Fitting and extrapolating data points...")
-    tau_0, tau_0_error = fit_and_extrapolate(force_const_dict_times)
+    if not silent:
+        print("Fitting and extrapolating data points...")
+    tau_0, tau_0_error = fit_and_extrapolate(force_const_dict_times,
+                                             image_directory, make_plot, silent)
     
     return tau_0, tau_0_error, force_const_dict_times
     
@@ -170,14 +193,19 @@ if __name__ == "__main__":
         default=False, 
         help="Generate plots that depict association probability over time. "\
         "Default: False.", action="store_true")
+    argparser.add_argument(
+        "-d", "--image_directory", dest="image_directory", 
+        default=None, type=str,
+        help="Define the directory where all plots and images will be saved.")
     
     args = argparser.parse_args()
     args = vars(args)
     ramd_log_files = args["ramd_log_files"]
     include_all_times = args["include_all_times"]
     make_probability_plots = args["make_probability_plots"]
+    image_directory = args["image_directory"]
     
     tau_0, tau_0_error, force_const_dict_times = maximova(
-        ramd_log_files, include_all_times)
+        ramd_log_files, include_all_times, image_directory)
     if make_probability_plots:
-        plot_association_proportion(force_const_dict_times)
+        plot_association_proportion(force_const_dict_times, image_directory)

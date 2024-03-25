@@ -3,32 +3,129 @@ analyze_log.py
 
 Read and parse a RAMD log file. Construct a series of milestoning models from 
 the trajectory fragments for a set of bins of RAMD force vectors. The 
-information from the milestoning models will be used in a sigma-RAMD model
-that will allow one to expand the residence time in a Taylor series expansion
-according to sigma-RAMD theory.
+information from the milestoning models will be used in a theta-RAMD model
+that will allow one to obtain an estimate of the absolute residence time 
+according to theta-RAMD theory.
 """
 
+import os
+import glob
 import argparse
 
 import numpy as np
 from openmm import unit
+import matplotlib.pyplot as plt
 
 import openmm_ramd.analyze.modules.parser as parser
 import openmm_ramd.analyze.modules.samples as samples
 import openmm_ramd.analyze.modules.milestoning as milestoning
 
 A_per_nm = 10.0
+NUM_CONVERGENCE_INTERVALS = 20
 
-def sigma_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10, 
+class InsufficientTrajectoriesError(Exception):
+    pass
+
+def make_xi_bin_plots(milestones, xi_bins, image_directory=None):
+    YLIM_MIN_BOUND = -20.0
+    YLIM_MAX_BOUND = 20.0
+    
+    # First plot the slanted profiles
+    pi_fig1, ax = plt.subplots()
+    global_ylim_min = YLIM_MAX_BOUND
+    global_ylim_max = YLIM_MIN_BOUND
+    for i, xi_bin in enumerate(xi_bins):
+        xi = xi_bin.midpoint
+        ylim_min = np.max((np.min(xi_bin.main_data_sample.free_energy_profile), YLIM_MIN_BOUND))
+        if ylim_min < global_ylim_min:
+            global_ylim_min = ylim_min
+            
+        ylim_max = np.min((np.max(xi_bin.main_data_sample.free_energy_profile), YLIM_MAX_BOUND))
+        if ylim_max > global_ylim_max:
+            global_ylim_max = ylim_max
+        plt.plot(milestones, xi_bin.main_data_sample.free_energy_profile, label=f"$\\xi$={xi:.2f}")
+        
+    plt.ylim((global_ylim_min, global_ylim_max))
+    #plt.legend()
+    plt.ylabel("$W(z)$ (kJ/mol)")
+    plt.xlabel("$z (\\AA)$")
+    plt.title("Slanted Free Energy Profiles")
+    
+    if image_directory is None:
+        plt.show()
+    else:
+        plt.savefig(os.path.join(image_directory, "slanted_profile.png"))
+    
+    plt.close()
+    
+    # Next, plot the unslanted profiles
+    pi_fig2, ax = plt.subplots()
+    global_ylim_min = YLIM_MAX_BOUND
+    global_ylim_max = YLIM_MIN_BOUND
+    for i, xi_bin in enumerate(xi_bins):
+        xi = xi_bin.midpoint
+        ylim_min = np.max((np.min(xi_bin.main_data_sample.free_energy_profile), YLIM_MIN_BOUND))
+        if ylim_min < global_ylim_min:
+            global_ylim_min = ylim_min
+        
+        ylim_max = np.min((np.max(xi_bin.main_data_sample.free_energy_profile), YLIM_MAX_BOUND))
+        if ylim_max > global_ylim_max:
+            global_ylim_max = ylim_max
+        plt.plot(milestones, xi_bin.main_data_sample_unslanted.free_energy_profile, label=f"$\\xi$={xi:.2f}")
+        
+    plt.ylim((global_ylim_min, global_ylim_max))
+    #plt.legend()
+    plt.ylabel("$W(z)$ (kJ/mol)")
+    plt.xlabel("$z (\\AA)$")
+    plt.title("Unslanted Free Energy Profiles")
+    if image_directory is None:
+        plt.show()
+    else:
+        plt.savefig(os.path.join(image_directory, "unslanted_profile.png"))
+    
+    plt.close()
+    return
+
+# TODO: Remove? This function was merely to confirm that real systems
+#  rarely transfer to non-adjacent milestones, which, at least for host-
+#  guest, they don't seem to do often, even for as many as 50 milestones
+def make_matrix_bar_plot(matrix, image_directory=None, name="matrix.png"):
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    
+    m, n = matrix.shape
+    
+    for i in range(m):
+        xs = np.arange(n)
+        ys = matrix[:,i]
+        # Plot the bar graph given by xs and ys on the plane y=k with 80% opacity.
+        ax.bar(xs, ys, zs=i, zdir='y', alpha=0.8)
+    
+    ax.set_xlabel("Destination")
+    ax.set_ylabel("Source")
+    ax.set_zlabel("Value")
+    ax.set_title("Matrix transition probabilities")
+    
+    if image_directory is None:
+        plt.show()
+    else:
+        plt.savefig(os.path.join(image_directory, name))
+    
+    plt.close(fig)
+    return
+
+def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10, 
                 toy_mode=False, num_error_samples=100, 
                 stride_error_samples=None, skip_error_samples=None, 
-                cut_out_drift=False, verbose=False):
+                cut_out_drift=False, image_directory=None, verbose=False,
+                display_xi_bin_plots=False):
     if verbose:
         print(f"Using {num_milestones} milestones.")
         print(f"Using {num_angle_bins} angle bins.")
     
     trajectory_list = []
     force_out_freq = None
+    position_print_freq = None
     forceRAMD = None
     time_step = None
     temperature = None
@@ -37,12 +134,13 @@ def sigma_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
         print("Now loading log files...")
         
     for ramd_log_filename in ramd_log_file_list:
-        trajectories, force_out_freq_, forceRAMD_, time_step_, \
-            num_trajectories_, temperature_, max_dist_ \
+        trajectories, force_out_freq_, position_print_freq_, forceRAMD_, \
+            time_step_, num_trajectories_, temperature_, max_dist_ \
             = parser.parse_ramd_log_file(
                 ramd_log_filename)
         if force_out_freq is None:
             force_out_freq = force_out_freq_
+            position_print_freq = position_print_freq_
             forceRAMD = forceRAMD_
             time_step = time_step_
             temperature = temperature_
@@ -50,6 +148,8 @@ def sigma_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
         else:
             assert force_out_freq == force_out_freq_, \
                 "RAMD logs contain differing force_out_freq values."
+            assert position_print_freq == position_print_freq_, \
+                "RAMD logs contain differing position_print_freq values."
             assert forceRAMD == forceRAMD_, \
                 "RAMD logs contain differing forceRAMD values."
             assert time_step == time_step_, \
@@ -68,6 +168,7 @@ def sigma_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
         print("Number of trajectories extracted from log file(s):", 
               len(trajectory_list))
         print("force_out_freq:", force_out_freq)
+        print("position_print_freq:", position_print_freq)
         print("forceRAMD:", forceRAMD, "kcal/(mole * Angstrom)")
         print("time_step:", time_step, "ps")
         print("temperature:", temperature, "K")
@@ -114,7 +215,7 @@ def sigma_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
         if not found_bin:
             raise Exception(f"xi value {traj_xi} not placed in bin.")
     
-    frame_time = time_step * force_out_freq
+    frame_time = time_step * position_print_freq
     #forceRAMD_in_nm_unitless = forceRAMD * A_per_nm
     #forceRAMD_in_nm = forceRAMD_in_nm_unitless * unit.kilocalories_per_mole
     #forceRAMD_in_A = forceRAMD * unit.kilocalories_per_mole
@@ -123,8 +224,11 @@ def sigma_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
         xi = xi_bin.midpoint
         if verbose:
             print(f"num trajectories in bin {i}: {len(xi_bin.trajs)}")
-        assert len(xi_bin.trajs) > 0, "All angle bins need trajectories. "\
-            "Either run more simulations or decrease the number of angle bins."
+        if len(xi_bin.trajs) == 0:
+            print("All angle bins need trajectories. Either run more "\
+                  "simulations or decrease the number of angle bins.")
+            raise InsufficientTrajectoriesError
+            
         count_matrix, time_vector, time_matrix, avg_time_vector, \
             avg_time_matrix = milestoning.make_milestoning_model(
                 xi_bin.trajs, milestones, frame_time, num_milestones,
@@ -146,6 +250,9 @@ def sigma_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
                              unitless_beta=unitless_beta, 
                              data_sample=xi_bin.main_data_sample_unslanted)
     
+    if display_xi_bin_plots:
+        make_xi_bin_plots(milestones, xi_bins, image_directory)
+        
     analysis = samples.Analysis(num_milestones, milestones, h, situation, 
                                 bulk_milestones)
     analysis.avg_unslanted_xi_bins(xi_bins)
@@ -157,7 +264,49 @@ def sigma_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
     analysis.make_times(starting_index)
     return analysis
 
-# TODO: add Torque balancing in the RAMD.
+def converge(ramd_log_files, num_intervals, num_milestones, num_angle_bins, 
+             image_directory=None, toy_mode=False):
+    total_num_log_files = len(ramd_log_files)
+    ending_indices = np.linspace(0, total_num_log_files, num_intervals+1, 
+                                 dtype=int)
+    residence_times = np.zeros((num_intervals+1))
+    residence_times_err = np.zeros((num_intervals+1))
+    for i, ending_index in enumerate(ending_indices):
+        print("Now analyzing convergence interval:", i, "of", num_intervals, 
+              "-", ending_index, "log files.")
+        ramd_log_file_subset = ramd_log_files[:ending_index]
+        if len(ramd_log_file_subset) == 0:
+            continue
+        try:
+            theta_analysis = theta_ramd(
+                ramd_log_file_subset, num_milestones, num_angle_bins, 
+                toy_mode=toy_mode)
+            residence_times[i] = theta_analysis.MFPT
+            residence_times_err[i] = theta_analysis.MFPT_error
+        except InsufficientTrajectoriesError:
+            residence_times[i] = np.NAN
+            continue
+        
+    if not np.any(np.isfinite(residence_times)) or np.all(residence_times == 0):
+        # No entries, therefore don't make a plot
+        return
+    
+    fig, ax = plt.subplots()
+    ax.errorbar(ending_indices, residence_times, residence_times_err,
+            linestyle="-", marker="o", markersize=1, capsize=2)
+    plt.ylabel("Residence Time (s)")
+    plt.xlabel("Number of log files included")
+    plt.title("Residence Time Convergence")
+    plt.yscale("log", nonpositive="mask")
+    plt.tight_layout()
+    if image_directory is None:
+        plt.show()
+    else:
+        plt.savefig(os.path.join(image_directory, "converge.png"))
+    
+    plt.close(fig)
+    return
+
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description=__doc__)
     argparser.add_argument(
@@ -178,9 +327,9 @@ if __name__ == "__main__":
         action="store_true")
     argparser.add_argument(
         "-N", "--num_error_samples", dest="num_error_samples", 
-        default=100, type=int, help="Specify the number of error samples" \
+        default=1000, type=int, help="Specify the number of error samples" \
         " to generate for estimating error/uncertainty of computed "\
-        "values. Default: 100")
+        "values. Default: 1000")
     argparser.add_argument(
         "-S", "--stride_error_samples", dest="stride_error_samples", 
         default=None, type=int, help="Specify the number of strides between" \
@@ -199,9 +348,21 @@ if __name__ == "__main__":
         "the most non-equilibrium situations where there is drift between "\
         "starting and ending locations.", action="store_true")
     argparser.add_argument(
+        "-d", "--image_directory", dest="image_directory", 
+        default=None, type=str,
+        help="Define the directory where all plots and images will be saved.")
+    argparser.add_argument(
         "-v", "--verbose", dest="verbose", default=False,
         help="Verbose mode will print out much more information about the "\
         "milestoning model, and other information.", action="store_true")
+    argparser.add_argument(
+        "-x", "--display_xi_bin_plots", dest="display_xi_bin_plots", 
+        default=False, help="Toggle the display of energy plots for each xi "\
+        "bin, both slanted and unslanted.", action="store_true")
+    argparser.add_argument(
+        "-C", "--convergence", dest="convergence", default=False,
+        help="Perform a convergence analysis and generate a convergence plot", 
+        action="store_true")
     
     args = argparser.parse_args()
     args = vars(args)
@@ -213,14 +374,24 @@ if __name__ == "__main__":
     stride_error_samples = args["stride_error_samples"]
     skip_error_samples = args["skip_error_samples"]
     cut_out_drift = args["cut_out_drift"]
+    image_directory = args["image_directory"]
     verbose = args["verbose"]
+    display_xi_bin_plots = args["display_xi_bin_plots"]
+    convergence = args["convergence"]
     
-    analysis = sigma_ramd(
+    analysis = theta_ramd(
         ramd_log_files, num_milestones, num_angle_bins, toy_mode=toy_mode, 
         num_error_samples=num_error_samples, 
         stride_error_samples=stride_error_samples, 
         skip_error_samples=skip_error_samples, cut_out_drift=cut_out_drift, 
-        verbose=verbose)
+        image_directory=image_directory, verbose=verbose, 
+        display_xi_bin_plots=display_xi_bin_plots)
     
     analysis.print_results()
-    analysis.create_plots()
+    if convergence:
+        converge(ramd_log_files, num_intervals=NUM_CONVERGENCE_INTERVALS, 
+                 num_milestones=num_milestones, num_angle_bins=num_angle_bins, 
+                 image_directory=image_directory, toy_mode=toy_mode)
+        
+    analysis.create_plots(image_directory)
+    #make_matrix_bar_plot(analysis.main_data_sample.K)

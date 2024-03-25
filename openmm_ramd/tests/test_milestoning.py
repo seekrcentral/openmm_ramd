@@ -10,8 +10,8 @@ import openmm_ramd.analyze.modules.milestoning as milestoning
 
 def test_uniform_milestone_locations(small_linear_logfile_persistent):
     num_milestones = 10
-    [trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations,
-     temperature, maxDist] = small_linear_logfile_persistent
+    [trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, 
+     num_simulations, temperature, maxDist] = small_linear_logfile_persistent
     one_dim_trajs = parser.condense_trajectories(trajectories, maxDist, 
                                                  onlyZ=True)
     milestones, min_location, max_location, starting_cv_val, starting_index, h,\
@@ -103,6 +103,8 @@ def test_compute_diffusion_coefficients():
     h = 1.0
     D = 1.0
     t = h**2/(2.0*D)
+    beta = 1.0
+    milestones = np.arange(0, num_milestones*h, h)
     transition_matrix = np.zeros((num_milestones, num_milestones))
     rate_matrix = np.zeros((num_milestones, num_milestones))
     time_vector = np.zeros((num_milestones, 1))
@@ -118,9 +120,9 @@ def test_compute_diffusion_coefficients():
     for i in range(num_milestones):
         for j in range(num_milestones):
             rate_matrix[i, j] = transition_matrix[i, j] / time_vector[j, 0]
-    
+    free_energy_profile = np.zeros(num_milestones)
     diffusion_coeffs = milestoning.compute_diffusion_coefficients(
-        rate_matrix, num_milestones, h)
+        rate_matrix, transition_matrix, free_energy_profile, milestones, beta)
     
 def test_compute_counts():
     num_milestones = 11
@@ -131,3 +133,54 @@ def test_compute_counts():
         count_matrix[i-1, i] = 55
         count_matrix[i+1, i] = 55
     counts = milestoning.compute_counts(count_matrix, num_milestones)
+    
+def test_dest_milestone_from_cell_transition():
+    new_cell_id = 1
+    old_cell_id = 0
+    dest_milestone = milestoning.dest_milestone_from_cell_transition(
+        new_cell_id, old_cell_id)
+    assert dest_milestone == 0
+    
+    new_cell_id = 0
+    old_cell_id = 1
+    dest_milestone = milestoning.dest_milestone_from_cell_transition(
+        new_cell_id, old_cell_id)
+    assert dest_milestone == 0
+    
+    new_cell_id = 4
+    old_cell_id = 3
+    dest_milestone = milestoning.dest_milestone_from_cell_transition(
+        new_cell_id, old_cell_id)
+    assert dest_milestone == 3
+    
+    new_cell_id = 3
+    old_cell_id = 4
+    dest_milestone = milestoning.dest_milestone_from_cell_transition(
+        new_cell_id, old_cell_id)
+    assert dest_milestone == 3
+    
+    new_cell_id = 5
+    old_cell_id = 3
+    dest_milestone = milestoning.dest_milestone_from_cell_transition(
+        new_cell_id, old_cell_id)
+    assert dest_milestone == 4
+    
+    new_cell_id = 3
+    old_cell_id = 5
+    dest_milestone = milestoning.dest_milestone_from_cell_transition(
+        new_cell_id, old_cell_id)
+    assert dest_milestone == 3
+    
+    new_cell_id = 6
+    old_cell_id = 3
+    dest_milestone = milestoning.dest_milestone_from_cell_transition(
+        new_cell_id, old_cell_id)
+    assert dest_milestone == 5
+    
+    new_cell_id = 3
+    old_cell_id = 6
+    dest_milestone = milestoning.dest_milestone_from_cell_transition(
+        new_cell_id, old_cell_id)
+    assert dest_milestone == 3
+    
+    return

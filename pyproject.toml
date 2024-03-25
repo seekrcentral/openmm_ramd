@@ -27,6 +27,7 @@ dependencies = [
     "pandas",
     "matplotlib",
     "seaborn",
+    "PyGT",
 ]
 
 # Update the urls once the hosting is set up.

@@ -7,9 +7,10 @@ import numpy as np
 import openmm_ramd.analyze.modules.parser as parser
 
 def test_parse_ramd_log_file(small_linear_logfile_persistent):
-    [trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations,
-     temperature, maxDist] = small_linear_logfile_persistent
+    [trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, 
+     num_simulations, temperature, maxDist] = small_linear_logfile_persistent
     assert forceOutFreq == 50
+    assert positionPrintFreq == 50
     assert forceRAMD == 0.1
     assert timeStep == 0.002
     assert len(trajectories) == 2
@@ -41,12 +42,13 @@ def test_parse_ramd_log_file(small_linear_logfile_persistent):
 # TODO: will need the same tests for log files with receptor motion
 
 def test_parse_ramd_log_file_large(large_linear_logfile_persistent):
-    [trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations,
-     temperature, maxDist] = large_linear_logfile_persistent
+    [trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, 
+     num_simulations, temperature, maxDist] = large_linear_logfile_persistent
     
     for i in range(len(trajectories)):
         print("i:", i, "len(trajectory):", len(trajectories[i]))
     assert forceOutFreq == 50
+    assert positionPrintFreq == 50
     assert forceRAMD == 0.1
     assert timeStep == 0.002
     assert num_simulations == 101
@@ -54,8 +56,8 @@ def test_parse_ramd_log_file_large(large_linear_logfile_persistent):
     return
 
 def test_condense_trajectories(small_linear_logfile_persistent):
-    [trajectories, forceOutFreq, forceRAMD, timeStep, num_simulations,
-     temperature, maxDist] = small_linear_logfile_persistent
+    [trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, 
+     num_simulations, temperature, maxDist] = small_linear_logfile_persistent
     one_dim_trajs = parser.condense_trajectories(trajectories, maxDist, 
                                                  onlyZ=True)
     for trajectory, one_dim_traj in zip(trajectories, one_dim_trajs):
