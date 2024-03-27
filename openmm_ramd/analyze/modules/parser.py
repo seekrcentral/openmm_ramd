@@ -466,3 +466,33 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False):
         one_dim_trajs.append(one_dim_traj)
     
     return one_dim_trajs
+
+def get_last_lines_in_file(filename):
+    """
+    Retrieve the last 
+    """
+    with open(filename, "r") as f:
+        f.seek (0, 2)           # Seek @ EOF
+        fsize = f.tell()        # Get Size
+        f.seek (max (fsize-2048, 0), 0) # Set pos @ last n chars
+        lines = f.readlines()       # Read to end
+        
+    return lines
+
+def escaped_successfully(log_filename):
+    last_lines = get_last_lines_in_file(log_filename)
+    for i, line in enumerate(last_lines):
+        exit_event_search = re.match("EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED", line)
+        if exit_event_search:
+            return True
+        
+    return False
+        
+def ran_out_of_time(log_filename):
+    last_lines = get_last_lines_in_file(log_filename)
+    for i, line in enumerate(last_lines):
+        exit_event_search = re.match("EXIT: (\d+)  > MAXIMUM TIME EXCEEDED", line)
+        if exit_event_search:
+            return True
+        
+    return False

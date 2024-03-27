@@ -1,10 +1,15 @@
 """
 Test openmm_ramd parser.py functions.
 """
-
+import os
 import numpy as np
 
 import openmm_ramd.analyze.modules.parser as parser
+
+TEST_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
+test_small_log = os.path.join(TEST_DIRECTORY, "data/small_linear.txt")
+test_small_log_end = os.path.join(TEST_DIRECTORY, "data/small_with_end.txt")
+test_ran_outta_time = os.path.join(TEST_DIRECTORY, "data/ran_outta_time.txt")
 
 def test_parse_ramd_log_file(small_linear_logfile_persistent):
     [trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, 
@@ -87,3 +92,14 @@ def test_get_cv_vec_principal_component():
     trajectories = [trajectory]
     vec = parser.get_cv_vec_principal_component(trajectories)
     return
+
+def test_ran_out_of_time():
+    assert parser.ran_out_of_time(test_ran_outta_time) == True
+    assert parser.ran_out_of_time(test_small_log) == False
+    assert parser.ran_out_of_time(test_small_log_end) == False
+    return False
+
+def test_escaped_successfully():
+    assert parser.escaped_successfully(test_ran_outta_time) == False
+    assert parser.escaped_successfully(test_small_log) == False
+    assert parser.escaped_successfully(test_small_log_end) == True

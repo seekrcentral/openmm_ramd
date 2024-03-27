@@ -137,6 +137,15 @@ class RAMDSimulation(openmm_app.Simulation):
             timestep), print_also=False)
         return
     
+    def max_time_exceeded(self, timestep):
+        self.logger.exit_log(
+            "{}  > MAXIMUM TIME EXCEEDED".format(
+            timestep), print_also=False)
+        self.logger.exit_log(
+            "{}  > EXIT OPENMM".format(
+            timestep), print_also=False)
+        return
+    
     def get_lig_mass(self):
         mass = base.get_ligand_mass(
             self.system, self.force_handler.ligand_atom_indices)
@@ -379,12 +388,18 @@ class RAMDSimulation(openmm_app.Simulation):
         self.context.setTime(0.0)
         start_lig_prot_dist = self.RAMD_start()
         # Do the simulation steps and loop here. These are done every step
+        successful_escape = False
         while self.counter < max_num_steps:
             lig_prot_distance = self.RAMD_step(self.ramd_steps)
             if lig_prot_distance * unit.angstroms > self.max_dist:
                 self.max_distance_exceeded(self.counter)
+                successful_escape = True
                 break
         
+        if not successful_escape:
+            # Then we ran out of time
+            self.max_time_exceeded(max_num_steps)
+            
         return self.counter
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ TEST_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 test_small_log = os.path.join(TEST_DIRECTORY, "data/small_linear.txt")
 test_large_log = os.path.join(TEST_DIRECTORY, "data/large_linear.txt")
 test_small_log_end = os.path.join(TEST_DIRECTORY, "data/small_with_end.txt")
+test_ran_outta_time = os.path.join(TEST_DIRECTORY, "data/ran_outta_time.txt")
 
 @pytest.fixture(scope="session")
 def small_linear_logfile_persistent():
