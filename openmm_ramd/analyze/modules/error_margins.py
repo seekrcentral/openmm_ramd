@@ -161,9 +161,6 @@ def monte_carlo_milestoning_error(
     data_sample_list = []
     if verbose: print("collecting", num, "MCMC samples from", 
                       num*(stride) + skip + 1, "total moves")
-    np.savetxt("/home/lvotapka/tmp/N.txt", N)
-    np.savetxt("/home/lvotapka/tmp/R.txt", R)
-    
     new_data_sample = None
     for counter in range(num * stride + skip + 1):
         #if verbose: print("MCMC stepnum: ", counter)
