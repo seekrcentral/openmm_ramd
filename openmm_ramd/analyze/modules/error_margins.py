@@ -54,7 +54,7 @@ def irreversible_stochastic_matrix_algorithm_sample(
         i = random.choice(range(m))
         j = random.choice(range(m))
         counter = 0
-        while (Q[i,j] == 0.0) or (Q[i,i] == 0.0) or (N[i,j] == 0) \
+        while (Q[i,j] == 0.0) or (Q[i,i] == 0.0) or (N[i,j] <= 1) \
                 or (R[i,0] == 0) or (i==j):
             i = random.choice(range(m))
             j = random.choice(range(m))
@@ -160,7 +160,10 @@ def monte_carlo_milestoning_error(
         
     data_sample_list = []
     if verbose: print("collecting", num, "MCMC samples from", 
-                      num*(stride) + skip + 1, "total moves")  
+                      num*(stride) + skip + 1, "total moves")
+    np.savetxt("/home/lvotapka/tmp/N.txt", N)
+    np.savetxt("/home/lvotapka/tmp/R.txt", R)
+    
     new_data_sample = None
     for counter in range(num * stride + skip + 1):
         #if verbose: print("MCMC stepnum: ", counter)
@@ -181,6 +184,6 @@ def monte_carlo_milestoning_error(
     assert new_data_sample is not None, "Nothing sampled in Monte Carlo "\
         "milestoning procedure. Please choose different arrangement of num, "\
         "skip, and stride."
-    if verbose: print("final MCMC matrix", Q)
+    #if verbose: print("final MCMC matrix", Q)
     
     return data_sample_list

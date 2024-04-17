@@ -32,6 +32,8 @@ rec_indices = [569, 583, 605, 617, 1266, 1292, 1299, 1374, 1440, 1459, 1499,
 
 # Indices for VMD selection
 # 569 583 605 617 1266 1292 1299 1374 1440 1459 1499 1849 1872 1892 2256 2295 2352 2557
+
+restraint_indices = rec_indices
                 
 # Enter the atom indices of the ligand molecule
 lig_indices = [3259, 3260, 3261, 3262, 3263, 3264, 3265, 3266, 3267, 3268, 
@@ -77,4 +79,4 @@ run_amber_RAMD.run_amber_RAMD(
     steps_per_energy_update=steps_per_energy_update, 
     steps_per_trajectory_update=steps_per_trajectory_update, 
     trajectory_filename=trajectory_filename,
-    max_num_steps=num_steps)
+    max_num_steps=num_steps, restraint_indices=restraint_indices)

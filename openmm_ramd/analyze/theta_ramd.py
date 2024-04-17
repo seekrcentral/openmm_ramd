@@ -254,7 +254,7 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
         make_xi_bin_plots(milestones, xi_bins, image_directory)
         
     analysis = samples.Analysis(num_milestones, milestones, h, situation, 
-                                bulk_milestones)
+                                bulk_milestones, verbose)
     analysis.avg_unslanted_xi_bins(xi_bins)
     if num_error_samples > 0:
         analysis.sample_error_matrices(

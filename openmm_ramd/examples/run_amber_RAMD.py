@@ -22,7 +22,8 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
                    ramd_log_filename="ramd.log", minimize=False,
                    steps_per_energy_update=None, 
                    steps_per_trajectory_update=None, trajectory_filename=None,
-                   max_num_steps=10000000):
+                   max_num_steps=10000000, restraint_indices=None, 
+                   restraint_force_constant=None):
     prmtop = app.AmberPrmtopFile(prmtop_filename)
     mypdb = app.PDBFile(pdb_filename)
     pdb_parmed = parmed.load_file(pdb_filename)
@@ -56,8 +57,17 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
         cuda_device_index = "0"
     properties = {"CudaDeviceIndex": cuda_device_index, "CudaPrecision": "mixed"}
     
-    print("rec_indices:", rec_indices)
-    print("lig_indices:", lig_indices)
+    # Impose restraints
+    print("restraining receptor atoms")
+    if restraint_indices is None:
+        restraint_indices = rec_indices
+    
+    if restraint_force_constant is None:
+        restraint_force_constant = 1.0 * unit.kilocalories_per_mole / unit.angstrom**2
+    
+    print("restraint_indices:", restraint_indices)
+    base.impose_receptor_restraints(
+        system, mypdb.positions, restraint_force_constant, restraint_indices)
     
     simulation = ramd.RAMDSimulation(
         prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 

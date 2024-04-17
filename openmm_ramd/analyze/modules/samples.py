@@ -122,7 +122,7 @@ class Analysis:
     
     """
     def __init__(self, num_milestones, milestones, h, situation, 
-                 bulk_milestones):
+                 bulk_milestones, verbose=False):
         self.num_milestones = num_milestones
         self.milestones = milestones
         self.main_data_sample = None
@@ -141,6 +141,7 @@ class Analysis:
         self.h = h
         self.num_error_samples = 0
         self.situation = situation
+        self.verbose = verbose
         return
     
     def avg_unslanted_xi_bins(self, xi_bins):
@@ -194,7 +195,7 @@ class Analysis:
         self.num_error_samples = num_error_samples
         self.data_samples = error_margins.monte_carlo_milestoning_error(
             self.main_data_sample, num_error_samples, skip_error_samples, 
-            stride_error_samples)
+            stride_error_samples, self.verbose)
         return
     
     def make_profiles(self, starting_index, wrap_sink, unitless_beta):
