@@ -330,6 +330,8 @@ class RAMDSimulation(openmm_app.Simulation):
                 lig_com.value_in_unit(unit.angstroms) \
                 - self.old_lig_com.value_in_unit(unit.angstroms)) * unit.angstroms
             
+            self.old_lig_com = lig_com
+            
             if self.logger is not None:
                 self.logger.timestep_log(
                     "> EXTERNAL FORCE VECTOR (F): {}; ||F|| = {}".format(
@@ -380,7 +382,6 @@ class RAMDSimulation(openmm_app.Simulation):
         #                .format(lig_prot_com_distance), self.counter)
         
         self.counter += self.ramd_steps
-        self.old_lig_com = lig_com
         return lig_prot_com_distance
     
     def run_RAMD_sim(self, max_num_steps=1e8):

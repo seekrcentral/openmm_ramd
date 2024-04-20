@@ -261,13 +261,13 @@ class Analysis:
             column_sum = sum(self.main_data_sample.Q[:,j])
             assert column_sum >= 0.0, \
                 "Negative off-diagonal values in rate matrix not allowed"
-            if column_sum == 0.0:
-                if j > 0:
-                    self.main_data_sample.Q[j-1, j] += FAST_RATE
-                    self.main_data_sample.Q[j, j-1] += TINY_RATE
-                if j < self.num_milestones-1:
-                    self.main_data_sample.Q[j+1, j] += FAST_RATE
-                    self.main_data_sample.Q[j, j+1] += TINY_RATE
+            #if column_sum == 0.0:
+            #    if j > 0:
+            #        self.main_data_sample.Q[j-1, j] += FAST_RATE
+            #        self.main_data_sample.Q[j, j-1] += TINY_RATE
+            #    if j < self.num_milestones-1:
+            #        self.main_data_sample.Q[j+1, j] += FAST_RATE
+            #        self.main_data_sample.Q[j, j+1] += TINY_RATE
         
         for j in range(self.num_milestones):
             self.main_data_sample.Q[j, j] = 0.0

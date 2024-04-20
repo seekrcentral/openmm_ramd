@@ -25,9 +25,10 @@ def add_new_frame(trajectory, n_frames, relative_COM_x, relative_COM_y,
             frame = [old_ligand_COM_x, old_ligand_COM_y, old_ligand_COM_z,
                      accel_COM_x, accel_COM_y, accel_COM_z]
             
-        assert old_ligand_step == accel_step, \
-            "The lines defining ligand COM and accel vector are not the same "\
-            "RAMD step."
+        # Obselete for position_print_freq
+        #assert old_ligand_step == accel_step, \
+        #    "The lines defining ligand COM and accel vector are not the same "\
+        #    "RAMD step."
         
         trajectory.append(frame)
         
