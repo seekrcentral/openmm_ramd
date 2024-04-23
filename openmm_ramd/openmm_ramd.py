@@ -21,8 +21,10 @@ except ImportError:
 
 import openmm_ramd.base as base
 import openmm_ramd.force as force
+import openmm_ramd.integrator as ramd_integrator
 import openmm_ramd.logger as logger
 from openmm_ramd.base import kcal_per_mole_per_angstrom
+from openmm_ramd.base import A_per_nm
 
 class RAMDSimulation(openmm_app.Simulation):
     """
@@ -47,6 +49,11 @@ class RAMDSimulation(openmm_app.Simulation):
                  max_dist=50, debug_level=0, platform=None, 
                  properties=None, log_file_name=None, ramd_force_group=1,
                  ramd_seed=0, align_receptor=False, position_print_freq=None):
+        assert isinstance(integrator, ramd_integrator.RamdIntegrator), \
+            "A RAMD simulation must use one of the available integrators in "\
+            "the openmm_ramd.integrator module."
+        self.ligand_atom_indices = ligand_atom_indices
+        self.receptor_atom_indices = receptor_atom_indices
         self.log_file_name = log_file_name
         self.logger = None
         if log_file_name is not None:
@@ -91,6 +98,7 @@ class RAMDSimulation(openmm_app.Simulation):
         if receptor_atom_indices is None:
             align_receptor = False
         self.align_receptor = align_receptor
+        self.checked_atom_counts = False
         
         if platform is None:
             assert properties is None, "If platform is not set, properties "\
@@ -105,6 +113,13 @@ class RAMDSimulation(openmm_app.Simulation):
             #                                   platform, properties)
             super(RAMDSimulation, self).__init__(
                 topology, system, integrator, platform, properties)
+    
+    def minimizeEnergy(self):
+        super(RAMDSimulation, self).minimizeEnergy()
+        # TODO: make a super call and include the update positions for this
+        state = self.context.getState(getPositions=True)
+        new_positions = state.getPositions()
+        self.integrator.updateStartingPositions(new_positions)
     
     def recompute_RAMD_force(self):
         print("recomputing force!")
@@ -153,7 +168,7 @@ class RAMDSimulation(openmm_app.Simulation):
     
     def set_reference_positions(self, positions=None):
         if positions is None:
-            state = self.context.getState(getPositions = True)
+            state = self.context.getState(getPositions=True)
             positions = state.getPositions()
         xyz = np.array(positions.value_in_unit(unit.nanometers))
         self.mdtraj_trajectory_ref = mdtraj.Trajectory(
@@ -203,6 +218,40 @@ class RAMDSimulation(openmm_app.Simulation):
         com = base.get_ligand_com(self.system, positions, 
                                   self.force_handler.receptor_atom_indices)
         return com
+    
+    def get_lig_com_from_integrator(self):
+        lig_com_x = self.integrator.getGlobalVariableByName("lig_com_x")
+        lig_com_y = self.integrator.getGlobalVariableByName("lig_com_y")
+        lig_com_z = self.integrator.getGlobalVariableByName("lig_com_z")
+        return np.array([lig_com_x, lig_com_y, lig_com_z]) * unit.nanometers
+    
+    def get_rec_com_from_integrator(self):
+        rec_com_x = self.integrator.getGlobalVariableByName("rec_com_x")
+        rec_com_y = self.integrator.getGlobalVariableByName("rec_com_y")
+        rec_com_z = self.integrator.getGlobalVariableByName("rec_com_z")
+        return np.array([rec_com_x, rec_com_y, rec_com_z]) * unit.nanometers
+    
+    def get_lig_prot_com_dist(self):
+        com_com_dist_sq = self.integrator.getGlobalVariableByName(
+            "com_com_dist_sq")
+        return np.sqrt(com_com_dist_sq) * A_per_nm
+    
+    def check_atom_count(self):
+        num_lig_atoms = int(self.integrator.getGlobalVariableByName(
+            "num_lig_atoms"))
+        assert num_lig_atoms == len(self.ligand_atom_indices), \
+            "There was a problem in the RamdIntegrator matching the correct "\
+            "number of ligand indices. Correct number: "\
+            f"{len(self.ligand_atom_indices)}. Number in integrator: "\
+            f"{num_lig_atoms}"
+        if self.receptor_atom_indices is not None:
+            num_rec_atoms = self.integrator.getGlobalVariableByName(
+                "num_rec_atoms")
+            assert num_lig_atoms == len(self.ligand_atom_indices), \
+                "There was a problem in the RamdIntegrator matching the "\
+                "correct number of ligand indices. Correct number: "\
+                f"{len(self.receptor_atom_indices)}. Number in integrator: "\
+                f"{num_rec_atoms}"
     
     def RAMD_start(self):
         self.counter = 0
@@ -256,6 +305,7 @@ class RAMDSimulation(openmm_app.Simulation):
             lig_prot_com_distance = np.linalg.norm(
                 lig_com.value_in_unit(unit.angstroms) \
                 - rec_com.value_in_unit(unit.angstroms))
+            
         self.recompute_RAMD_force()
         random_direction = self.force_handler.random_vector
         random_direction_magnitude = np.linalg.norm(random_direction)
@@ -296,21 +346,32 @@ class RAMDSimulation(openmm_app.Simulation):
     
     def RAMD_step(self, numSteps=50):
         self.step(numSteps)
+        if not self.checked_atom_counts:
+            self.check_atom_count()
+            
         # Obtain positions for either a possible force update or position print
         if (self.counter % self.force_out_freq == 0) \
                 or (self.counter % self.position_print_freq == 0):
-            state = self.context.getState(getPositions = True)
-            positions = state.getPositions()
-            lig_com = self.get_lig_com(positions)
+            #state = self.context.getState(getPositions = True)
+            #positions = state.getPositions()
+            #lig_com = self.get_lig_com(positions)
+            lig_com = self.get_lig_com_from_integrator()
             if self.force_handler.receptor_atom_indices is not None:
-                rec_com = self.get_rec_com(positions, skip_alignment=True)
+                #rec_com = self.get_rec_com(positions, skip_alignment=True)
+                rec_com = self.get_rec_com_from_integrator()
                 lig_prot_com_distance = np.linalg.norm(
                     lig_com.value_in_unit(unit.angstroms) \
                     - rec_com.value_in_unit(unit.angstroms))
             else:
                 lig_prot_com_distance = np.linalg.norm(
                     lig_com.value_in_unit(unit.angstroms))
-        
+            
+            #lig_prog_com_dist_from_integrator = self.get_lig_prot_com_dist()
+            #assert np.isclose(
+            #    lig_prot_com_distance, lig_prog_com_dist_from_integrator),\
+            #    f"Integrator COM-COM dist:{lig_prog_com_dist_from_integrator} "\
+            #    f"Actual COM-COM dist:{lig_prot_com_distance}"
+            
         if self.counter % self.position_print_freq == 0:
             if self.logger is not None:
                 self.logger.force_log("> LIGAND COM IS: {} A".format(

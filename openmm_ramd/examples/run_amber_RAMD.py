@@ -12,6 +12,7 @@ import openmm.unit as unit
 import parmed
 
 import openmm_ramd.openmm_ramd as ramd
+import openmm_ramd.integrator as ramd_integrator
 import openmm_ramd.base as base
 
 def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices, 
@@ -51,7 +52,9 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
         barostat = mm.MonteCarloBarostat(target_pressure, temperature, 25)
         system.addForce(barostat)
         
-    integrator = mm.LangevinIntegrator(temperature, 1/unit.picosecond, time_step)
+    integrator = ramd_integrator.RamdLangevinIntegrator(
+        temperature, 1/unit.picosecond, time_step, lig_indices, rec_indices, 
+        mypdb.positions)
     platform = mm.Platform.getPlatformByName('CUDA')
     if cuda_device_index is None:
         cuda_device_index = "0"

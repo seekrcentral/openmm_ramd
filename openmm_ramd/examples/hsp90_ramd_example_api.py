@@ -15,6 +15,7 @@ import numpy as np
 
 import openmm_ramd.base as base
 from openmm_ramd import openmm_ramd
+import openmm_ramd.integrator as ramd_integrator
 
 prmtop_filename = "../data/hsp90_INH.prmtop"
 input_pdb_file = "../data/hsp90_INH.pdb"
@@ -96,7 +97,9 @@ if constant_pressure:
     barostat = mm.MonteCarloBarostat(target_pressure, temperature, 25)
     system.addForce(barostat)
     
-integrator = mm.LangevinIntegrator(temperature, 1/unit.picosecond, time_step)
+integrator = ramd_integrator.RamdLangevinIntegrator(
+        temperature, 1/unit.picosecond, time_step, lig_indices, rec_indices, 
+        mypdb.positions)
 platform = mm.Platform.getPlatformByName('CUDA')
 properties = {"CudaDeviceIndex": cuda_index, "CudaPrecision": "mixed"}
 

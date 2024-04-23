@@ -23,7 +23,7 @@ except ImportError:
 import parmed
 
 import openmm_ramd.openmm_ramd as openmm_ramd
-
+import openmm_ramd.integrator as ramd_integrator
 
 TEST_DIRECTORY = os.path.dirname(__file__)
 ROOT_DIRECTORY = os.path.join(TEST_DIRECTORY, "..")
@@ -31,6 +31,7 @@ ROOT_DIRECTORY = os.path.join(TEST_DIRECTORY, "..")
 def make_openmm_ramd_simulation_object(
         log_file_name=None, ramd_steps=10, r_min_ramd=0.025, force_out_freq=10, 
         max_dist=12.0 * unit.angstroms):
+    time_step = 0.002 * unit.picoseconds
     temperature = 298.15 * unit.kelvin
     ramd_force_magnitude = 14.0 * unit.kilocalories_per_mole / unit.angstrom
     rec_indices = [569, 583, 605, 617, 1266, 1292, 1299, 1374, 1440, 1459, 1499,
@@ -54,8 +55,11 @@ def make_openmm_ramd_simulation_object(
         nonbondedMethod=openmm_app.PME, nonbondedCutoff=1.0*unit.nanometers,
         constraints=openmm_app.HBonds)
     
-    integrator = openmm.LangevinIntegrator(
-        temperature, 1/unit.picosecond, 0.002*unit.picoseconds)
+    #integrator = openmm.LangevinIntegrator(
+    #    temperature, 1/unit.picosecond, 0.002*unit.picoseconds)
+    integrator = ramd_integrator.RamdLangevinIntegrator(
+        temperature, 1/unit.picosecond, time_step, lig_indices, rec_indices, 
+        mypdb.positions)
     simulation = openmm_ramd.RAMDSimulation(
         prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
         rec_indices, ramd_steps=ramd_steps, r_min_ramd=r_min_ramd, 

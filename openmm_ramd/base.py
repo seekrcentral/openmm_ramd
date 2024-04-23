@@ -14,6 +14,7 @@ except ImportError:
     import simtk.openmm as openmm
     
 kcal_per_mole_per_angstrom = unit.kilocalories_per_mole / unit.angstrom
+A_per_nm = 10.0
 
 def get_ligand_mass(system, group1):
     """
