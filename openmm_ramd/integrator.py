@@ -52,10 +52,9 @@ class RamdIntegrator(openmm.CustomIntegrator):
             self.addGlobalVariable("rec_weighted_x", 0)
             self.addGlobalVariable("rec_weighted_y", 0)
             self.addGlobalVariable("rec_weighted_z", 0)
-        self.addGlobalVariable("eps", 0.001 * unit.nanometers)
+        self.addGlobalVariable("pos_margin", 0.001 * unit.nanometers)
         for i, lig_index in enumerate(self.lig_indices):
             lig_position = self.starting_positions[lig_index]
-            print(f"Adding lig position {i}:", lig_position)
             self.addGlobalVariable(f"lig_x{i}", lig_position[0])
             self.addGlobalVariable(f"lig_y{i}", lig_position[1])
             self.addGlobalVariable(f"lig_z{i}", lig_position[2])
@@ -63,7 +62,6 @@ class RamdIntegrator(openmm.CustomIntegrator):
         if self.doing_rec:
             for i, rec_index in enumerate(self.rec_indices):
                 rec_position = self.starting_positions[rec_index]
-                print(f"Adding rec position {i}:", rec_position)
                 self.addGlobalVariable(f"rec_x{i}", rec_position[0])
                 self.addGlobalVariable(f"rec_y{i}", rec_position[1])
                 self.addGlobalVariable(f"rec_z{i}", rec_position[2])
@@ -97,12 +95,12 @@ class RamdIntegrator(openmm.CustomIntegrator):
         for i in range(len(self.lig_indices)):
             self.addComputePerDof(
                 "is_lig_atom", "is_lig_atom +"\
-                +f" (step(_x(x) - (lig_x{i} - eps)))"\
-                +f"*(step((lig_x{i} + eps) - _x(x)))"\
-                +f"*(step(_y(x) - (lig_y{i} - eps)))"\
-                +f"*(step((lig_y{i} + eps) - _y(x)))"\
-                +f"*(step(_z(x) - (lig_z{i} - eps)))"\
-                +f"*(step((lig_z{i} + eps) - _z(x)))/3")
+                +f" (step(_x(x) - (lig_x{i} - pos_margin)))"\
+                +f"*(step((lig_x{i} + pos_margin) - _x(x)))"\
+                +f"*(step(_y(x) - (lig_y{i} - pos_margin)))"\
+                +f"*(step((lig_y{i} + pos_margin) - _y(x)))"\
+                +f"*(step(_z(x) - (lig_z{i} - pos_margin)))"\
+                +f"*(step((lig_z{i} + pos_margin) - _z(x)))/3")
         
         self.addComputeSum("num_lig_atoms", "is_lig_atom")
         self.addComputeSum("lig_mass", "is_lig_atom * m")
@@ -110,12 +108,12 @@ class RamdIntegrator(openmm.CustomIntegrator):
             for i in range(len(self.rec_indices)):
                 self.addComputePerDof(
                     "is_rec_atom", "is_rec_atom +"\
-                    +f" (step(_x(x) - (rec_x{i} - eps)))"\
-                    +f"*(step((rec_x{i} + eps) - _x(x)))"\
-                    +f"*(step(_y(x) - (rec_y{i} - eps)))"\
-                    +f"*(step((rec_y{i} + eps) - _y(x)))"\
-                    +f"*(step(_z(x) - (rec_z{i} - eps)))"\
-                    +f"*(step((rec_z{i} + eps) - _z(x)))/3")
+                    +f" (step(_x(x) - (rec_x{i} - pos_margin)))"\
+                    +f"*(step((rec_x{i} + pos_margin) - _x(x)))"\
+                    +f"*(step(_y(x) - (rec_y{i} - pos_margin)))"\
+                    +f"*(step((rec_y{i} + pos_margin) - _y(x)))"\
+                    +f"*(step(_z(x) - (rec_z{i} - pos_margin)))"\
+                    +f"*(step((rec_z{i} + pos_margin) - _z(x)))/3")
             
             self.addComputeSum("num_rec_atoms", "is_rec_atom")
             self.addComputeSum("rec_mass", "is_rec_atom * m")
@@ -191,23 +189,23 @@ class RamdLangevinIntegrator(RamdIntegrator):
         self.addGlobalVariable("noisescale", 0.0)
         
         # Add per-DOF variables for Langevin integration
-        self.addPerDofVariable("newx", 0)
+        self.addPerDofVariable("oldx", 0)
         return
         
     def perform_integration_steps(self):
-        # perform Langevin self steps
+        # perform Langevin steps
         self.addComputeGlobal("vscale", "exp(-dt*friction_coeff)")
         self.addComputeGlobal("fscale", "(1-vscale)/friction_coeff")
         self.addComputeGlobal("noisescale", 
                                     "sqrt(thermal_energy*(1-vscale*vscale))")
         
-        self.addComputePerDof("newx", "x")
+        self.addComputePerDof("oldx", "x")
         self.addComputePerDof("v", 
                               "vscale*v + fscale*f/m "\
                               "+ noisescale*gaussian/sqrt(m)")
         self.addComputePerDof("x", "x+dt*v")
         self.addConstrainPositions()
-        self.addComputePerDof("v", "(x-newx)/dt")
+        self.addComputePerDof("v", "(x-oldx)/dt")
         return
     
     def updateStartingPositions(self, new_positions):
@@ -216,6 +214,68 @@ class RamdLangevinIntegrator(RamdIntegrator):
         so that the correct atoms are selected for the COM-COM calculation.
         """
         super(RamdLangevinIntegrator, self).updateStartingPositions(
+            new_positions)
+        return
+    
+    def getFriction(self):
+        return self.friction
+    
+    def setFriction(self, friction_coeff):
+        self.friction_coeff = friction_coeff
+        self.setGlobalVariableByName("friction_coeff", friction_coeff)
+        return
+    
+    def getTemperature(self):
+        return self.temperature
+    
+    def setTemperature(self, temperature):
+        self.temperature = temperature
+        kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
+        thermal_energy = kB * temperature
+        self.setGlobalVariableByName("thermal_energy", thermal_energy)
+        return
+
+class RamdBrownianIntegrator(RamdIntegrator):
+    def __init__(self, temperature, friction_coeff, dt, lig_indices, 
+                 rec_indices, starting_positions):
+        # Initialize the superclass integrator
+        self.temperature = temperature
+        self.friction_coeff = friction_coeff
+        super(RamdBrownianIntegrator, self).__init__(
+            dt, lig_indices, rec_indices, starting_positions)
+        return
+        
+    def prepare_integration_quantities(self):
+        kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
+        thermal_energy = kB * self.temperature
+        
+        # Add global variables for Langevin integration
+        self.addGlobalVariable("thermal_energy", thermal_energy)
+        self.addGlobalVariable("friction_coeff", self.friction_coeff)
+        self.addGlobalVariable("fscale", 0.0)
+        self.addGlobalVariable("noiseAmplitude", 0.0)
+        
+        # Add per-DOF variables for Langevin integration
+        self.addPerDofVariable("oldx", 0)
+        return
+        
+    def perform_integration_steps(self):
+        # perform Brownian steps
+        self.addComputeGlobal("fscale", "dt/friction_coeff")
+        self.addComputeGlobal("noiseAmplitude", 
+                                    "sqrt(2*thermal_energy*dt/friction_coeff)")
+        self.addComputePerDof("oldx", "x")
+        self.addComputePerDof("x", "x + fscale*f/m + noiseAmplitude*gaussian/sqrt(m)")
+        self.addConstrainPositions()
+        self.addComputePerDof("v", "(x-oldx)/dt")
+        return
+    
+    def updateStartingPositions(self, new_positions):
+        """
+        Run this command after a minimization to update the starting positions
+        so that the correct atoms are selected for the COM-COM calculation.
+        """
+        super(RamdBrownianIntegrator, self).updateStartingPositions(
             new_positions)
         return
     
