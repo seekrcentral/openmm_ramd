@@ -68,8 +68,12 @@ def parse_ramd_log_file(ramd_log_filename):
     accel_step = None
     num_simulations = 0
         
-    with open(ramd_log_filename, "r") as f:
-        for i, line in enumerate(f.readlines()):
+    with open(ramd_log_filename, "rb") as f:
+        for i, bline in enumerate(f):
+            try:
+                line = bline.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
             new_trajectory_frame = False
             new_trajectory = False
             # Determine the log output frequency
@@ -246,8 +250,12 @@ def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
     # A value of -1 indicates that no exit events happened
     exit_step = None
     
-    with open(ramd_log_filename, "r") as f:
-        for i, line in enumerate(f.readlines()):
+    with open(ramd_log_filename, "rb") as f:
+        for i, bline in enumerate(f):
+            try:
+                line = bline.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
             forceRAMD_search = re.match("RAMD: forceRAMD * (\d+\.?\d*[eE]?[+-]?\d*)", line)
             if forceRAMD_search:
                 forceRAMD_ = float(forceRAMD_search.group(1))
@@ -472,7 +480,7 @@ def get_last_lines_in_file(filename):
     """
     Retrieve the last 
     """
-    with open(filename, "r") as f:
+    with open(filename, "rb") as f:
         f.seek (0, 2)           # Seek @ EOF
         fsize = f.tell()        # Get Size
         f.seek (max (fsize-2048, 0), 0) # Set pos @ last n chars

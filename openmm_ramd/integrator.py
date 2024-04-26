@@ -194,6 +194,7 @@ class RamdLangevinIntegrator(RamdIntegrator):
         
     def perform_integration_steps(self):
         # perform Langevin steps
+        self.addUpdateContextState()
         self.addComputeGlobal("vscale", "exp(-dt*friction_coeff)")
         self.addComputeGlobal("fscale", "(1-vscale)/friction_coeff")
         self.addComputeGlobal("noisescale", 
@@ -261,6 +262,7 @@ class RamdBrownianIntegrator(RamdIntegrator):
         
     def perform_integration_steps(self):
         # perform Brownian steps
+        self.addUpdateContextState()
         self.addComputeGlobal("fscale", "dt/friction_coeff")
         self.addComputeGlobal("noiseAmplitude", 
                                     "sqrt(2*thermal_energy*dt/friction_coeff)")

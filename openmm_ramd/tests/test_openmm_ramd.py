@@ -86,8 +86,8 @@ def test_openmm_ramd_simulation():
 def test_openmm_run_RAMD_sim(tmp_path):
     log_file_name = os.path.join(tmp_path, "ramd.log")
     simulation = make_openmm_ramd_simulation_object(
-        log_file_name, ramd_steps=10, r_min_ramd=0.025*unit.angstroms, force_out_freq=10, 
-        max_dist=12.0*unit.angstroms)
+        log_file_name, ramd_steps=10, r_min_ramd=0.025*unit.angstroms, 
+        force_out_freq=10, max_dist=12.0*unit.angstroms)
     step_counter = simulation.run_RAMD_sim(max_num_steps=50)
     assert step_counter == 50
     assert os.path.exists(log_file_name)
