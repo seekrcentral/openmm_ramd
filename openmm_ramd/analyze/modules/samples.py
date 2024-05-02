@@ -76,11 +76,13 @@ class Xi_bin():
         h = self.milestones[1] - self.milestones[0]
         if data_sample is None:
             data_sample = self.main_data_sample
+        milestoning.fill_gaps_in_matrix(data_sample.K, normalize=True)
         data_sample.p_i = milestoning.compute_stationary_probabilities(
             data_sample.K, data_sample.t, self.num_milestones, 
             starting_index, self.situation, wrap_sink=wrap_sink)
         data_sample.free_energy_profile = remove_slant.make_energy_profile(
             data_sample.p_i, unitless_beta, starting_index)
+        
         data_sample.diffusion_profile = milestoning.compute_diffusion_coefficients(
             data_sample.Q, data_sample.K, data_sample.free_energy_profile, 
             self.milestones, unitless_beta)
@@ -127,6 +129,7 @@ class Analysis:
         self.milestones = milestones
         self.main_data_sample = None
         self.data_samples = []
+        self.counts_sum = None
         self.p_i = None
         self.p_i_error = None
         self.free_energy_profile = None
@@ -165,21 +168,27 @@ class Analysis:
                 total_time_vector_sum[j, 0] += \
                     xi_bin.main_data_sample_unslanted.R_i[j, 0]
                 counts_sum[j] += xi_bin.counts[j]
-            
+        
         rate_matrix_avg = np.zeros((self.num_milestones, self.num_milestones))
         transition_matrix_avg = np.zeros((self.num_milestones, self.num_milestones))
         avg_time_vector_avg = np.zeros((self.num_milestones, 1))
         for j in range(self.num_milestones):
-            if counts_sum[j] == 0:
-                rate_matrix_avg[j-1, j] = rate_matrix_avg[j, j-1]
-                rate_matrix_avg[j, j] = -rate_matrix_avg[j, j-1]
-            else:
+            #if counts_sum[j] == 0:
+            #    rate_matrix_avg[j-1, j] = rate_matrix_avg[j, j-1]
+            #    rate_matrix_avg[j, j] = -rate_matrix_avg[j, j-1]
+            #else:
+            if counts_sum[j] > 0:
                 rate_matrix_avg[:, j] = rate_matrix_sum[:, j] / counts_sum[j]
                 transition_matrix_avg[:, j] = transition_matrix_sum[:, j] / counts_sum[j]
                 avg_time_vector_avg[j, 0] = avg_time_vector_sum[j, 0] / counts_sum[j]
         
-        correct_milestoning_model_for_ramd(
-            rate_matrix_avg, transition_matrix_avg, avg_time_vector_avg)
+        self.counts_sum = counts_sum
+        milestoning.fill_gaps_in_matrix(rate_matrix_avg, normalize=False, flat=True)
+        milestoning.fill_gaps_in_matrix(transition_matrix_avg, normalize=True, flat=True)
+        milestoning.fill_gaps_in_vector(avg_time_vector_avg)
+        # TODO: remove
+        #correct_milestoning_model_for_ramd(
+        #    rate_matrix_avg, transition_matrix_avg, avg_time_vector_avg)
         
         self.main_data_sample = Data_sample()
         self.main_data_sample.t = avg_time_vector_avg
@@ -190,6 +199,62 @@ class Analysis:
         
         return
     
+    def estimate_matrix_beyond_zero_count(self, starting_index):
+        found_zero_count = False
+        rate_estimate = FAST_RATE
+        if (self.situation == 1) or (self.situation == 3):
+            for i in range(starting_index, self.num_milestones):
+                if self.counts_sum[i] < 1:
+                    found_zero_count = True
+                    rate_estimate = np.sum(self.main_data_sample.Q[:,i])
+                    
+                if found_zero_count:
+                    if i == 0:
+                        self.main_data_sample.K[i+1,i] = 1.0
+                        self.main_data_sample.Q[i+1,i] = rate_estimate
+                        #self.main_data_sample.Q[i,i] = -rate_estimate
+                    
+                    elif i == self.num_milestones-1:
+                        self.main_data_sample.K[i-1,i] = 1.0
+                        self.main_data_sample.Q[i-1,i] = rate_estimate
+                        #self.main_data_sample.Q[i,i] = -rate_estimate
+                        
+                    else:
+                        self.main_data_sample.K[i-1,i] = 0.45
+                        self.main_data_sample.K[i+1,i] = 0.55
+                        self.main_data_sample.Q[i-1,i] = 0.45 * rate_estimate
+                        self.main_data_sample.Q[i+1,i] = 0.55 * rate_estimate
+                        #self.main_data_sample.Q[i,i] = -rate_estimate
+        
+        found_zero_count = False
+        rate_estimate = FAST_RATE
+        if (self.situation == 2) or (self.situation == 3):
+            for i in range(starting_index, -1, -1):
+                if self.counts_sum[i] == 0:
+                    found_zero_count = True
+                    rate_estimate = np.sum(self.main_data_sample.Q[:,i])
+                    
+                if found_zero_count:
+                    if i == 0:
+                        self.main_data_sample.K[i+1,i] = 1.0
+                        self.main_data_sample.Q[i+1,i] = rate_estimate
+                        #self.main_data_sample.Q[i,i] = -rate_estimate
+                    
+                    elif i == self.num_milestones-1:
+                        self.main_data_sample.K[i-1,i] = 1.0
+                        self.main_data_sample.Q[i-1,i] = rate_estimate
+                        #self.main_data_sample.Q[i,i] = -rate_estimate
+                        
+                    else:
+                        self.main_data_sample.K[i-1,i] = 0.55
+                        self.main_data_sample.K[i+1,i] = 0.45
+                        self.main_data_sample.Q[i-1,i] = 0.55 * rate_estimate
+                        self.main_data_sample.Q[i+1,i] = 0.45 * rate_estimate
+                        #self.main_data_sample.Q[i,i] = -rate_estimate
+                
+        if self.situation not in [1, 2, 3]:
+            raise Exception(f"Not yet implemented: situation {self.situation}")
+    
     def sample_error_matrices(self, num_error_samples, stride_error_samples, 
                               skip_error_samples):
         self.num_error_samples = num_error_samples
@@ -199,6 +264,7 @@ class Analysis:
         return
     
     def make_profiles(self, starting_index, wrap_sink, unitless_beta):
+        milestoning.fill_gaps_in_matrix(self.main_data_sample.K, normalize=True)
         self.p_i = milestoning.compute_stationary_probabilities(
             self.main_data_sample.K, self.main_data_sample.t, 
             self.num_milestones, starting_index, self.situation, 
@@ -350,6 +416,15 @@ class Analysis:
                      yerr=self.diffusion_profile_err[:-1], color="b", ecolor="b", 
                      capsize=2)
         ax2.set_ylim(0.0, 1.2*np.max(self.diffusion_profile[1:-2]))
+        
+        ax3 = ax1.twinx()
+        ax3.set_ylabel("counts", color="g")
+        ax3.errorbar(np.round(self.milestones, 3), self.counts_sum, 
+                     yerr=np.zeros(self.num_milestones), color="g", ecolor="g", 
+                     capsize=0)
+        ax3.set_ylim(0.0, 1.2*np.max(self.counts_sum))
+        ax3.spines['right'].set_position(('outward', 65))
+        
         plt.tight_layout()
         if directory is None:
             plt.show()
@@ -495,6 +570,7 @@ def correct_transition_matrix_and_avg_time_vector_for_ramd(
 #    avg_time_vector_avg[-1] = avg_time_vector_avg[-2]
 #    return
 
+# TODO: remove
 def correct_milestoning_model_for_ramd(rate_matrix_avg, transition_matrix_avg,
                                        avg_time_vector_avg):
     #print("rate_matrix_avg:")

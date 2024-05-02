@@ -5,6 +5,8 @@ Prepare and utilize a milestoning model for RAMD simulation to use
 in a theta-RAMD analysis.
 """
 
+from collections import defaultdict
+
 import numpy as np
 
 MATRIX_EXPONENTIAL = 9999999999
@@ -202,7 +204,7 @@ def make_transition_matrix(num_milestones, count_matrix):
                 transition_matrix[j,i] = 0.0
             else:
                 transition_matrix[j,i] = count_matrix[j,i] / column_sum
-                
+    
     return transition_matrix
 
 def make_avg_time_vector(num_milestones, total_time_vector, count_matrix):
@@ -234,8 +236,124 @@ def make_rate_matrix(num_milestones, transition_matrix, avg_time_vector):
     
     for i in range(num_milestones):
         rate_matrix[i,i] = -np.sum(rate_matrix[:,i])
-        
+    
     return rate_matrix
+
+def fill_gaps_in_matrix(matrix, normalize=False, flat=True):
+    """
+    Given a matrix with "gaps" - that is, a state where no flux/probability
+    is flowing in any direction, it will fill in the gaps with the 
+    nearest neighbor (or the average of the nearest neighbors).
+    This algorithm assumes that rows are the states FROM, and columns
+    are the states TO.
+    """
+    zero_column_indices = []
+    for m in range(matrix.shape[1]):
+        # loop thru columns
+        if m > 0:
+            column_sum_down = np.sum(matrix[:m,m])
+        else:
+            column_sum_down = 0.0
+            
+        if m < matrix.shape[1] - 1:
+            column_sum_up = np.sum(matrix[m+1:,m])
+        else:
+            column_sum_up = 0.0
+            
+        column_sum = column_sum_down + column_sum_up
+        if column_sum == 0.0: 
+            # then we need to find a neighbor to 'steal' stats from
+            zero_column_indices.append(m)
+        
+    replacement_dict = defaultdict(list)
+    for zero_column_index in zero_column_indices:
+        found_replacement = False
+        for interval in range(1, matrix.shape[1]):
+            upper_index = zero_column_index - interval
+            lower_index = zero_column_index + interval
+            if (upper_index >= 0) and (upper_index not in zero_column_indices):
+                found_replacement = True
+                replacement_dict[zero_column_index].append(upper_index)
+                
+            if (lower_index < matrix.shape[1]) \
+                    and (lower_index not in zero_column_indices):
+                found_replacement = True
+                replacement_dict[zero_column_index].append(lower_index)
+            
+            if found_replacement:
+                break
+        
+    for col in replacement_dict:
+        other_list = replacement_dict[col]
+        num_others = len(other_list)
+        if num_others == 0:
+            continue
+        for other in other_list:
+            if matrix[other, other] == 0.0:
+                value = 1.0
+            else:
+                value = -matrix[other, other]
+                
+            if (col > 0) and (other > 0):
+                if flat:
+                    matrix[col-1, col] += value / num_others
+                else:
+                    matrix[col-1, col] += matrix[other-1, other] / num_others
+                
+            if (col < matrix.shape[1]-1) and (other < matrix.shape[1]-1):
+                if flat:
+                    matrix[col+1, col] += value / num_others
+                else:
+                    matrix[col+1, col] += matrix[other+1, other] / num_others
+                
+    if normalize:
+        for m in range(matrix.shape[1]):
+            column_sum = np.sum(matrix[:, m])
+            if column_sum > 0.0:
+                matrix[:, m] /= column_sum
+    
+    return
+
+def fill_gaps_in_vector(vector):
+    """
+    Given a vector with "gaps" - that is, a state where no value
+    is in the state, it will fill in the gaps with the 
+    nearest neighbor (or the average of the nearest neighbors).
+    """
+    n = len(vector)
+    zero_indices = []
+    for i, entry in enumerate(vector):
+        if entry == 0.0: 
+            # then we need to find a neighbor to 'steal' stats from
+            zero_indices.append(i)
+        
+    replacement_dict = defaultdict(list)
+    for zero_index in zero_indices:
+        found_replacement = False
+        for interval in range(1, n):
+            upper_index = zero_index - interval
+            lower_index = zero_index + interval
+            if (upper_index >= 0) and (upper_index not in zero_indices):
+                found_replacement = True
+                replacement_dict[zero_index].append(upper_index)
+                
+            if (lower_index < n) \
+                    and (lower_index not in zero_indices):
+                found_replacement = True
+                replacement_dict[zero_index].append(lower_index)
+            
+            if found_replacement:
+                break
+        
+    for i in replacement_dict:
+        other_list = replacement_dict[i]
+        num_others = len(other_list)
+        if num_others == 0:
+            continue
+        for other in other_list:
+            vector[i] += vector[other] / num_others
+    
+    return
 
 def compute_stationary_probabilities(transition_matrix, avg_time_vector, 
                                      num_milestones, start_index, situation,
@@ -398,19 +516,20 @@ def compute_diffusion_coefficients_OLD(rate_matrix, num_milestones, milestone_sp
     return diffusion_coeffs
 
 def compute_counts(count_matrix, num_milestones):
+    LOWER_LIMIT = 2 # could also be 1
     counts = np.zeros(num_milestones)
     for i in range(num_milestones):
         column_sum = np.sum(count_matrix[:,i])
         # This was the old way of doing it
-        counts[i] = column_sum
+        #counts[i] = column_sum
         # But this was problematic, because if a transition were ever one-way
         # Then there would be a huge jump in potential, which would be bad. So
         # If either side of the matrix sums to 0, then we should set the 
         # count matrix to zero also.
-        #if (np.sum(count_matrix[:i,i]) == 0) or (np.sum(count_matrix[(i+1):,i]) == 0):
-        #    # It really should be zero, but that tends to cause problems
-        #    counts[i] = 1
-        #else:
-        #    counts[i] = column_sum
+        if (np.sum(count_matrix[:i,i]) < LOWER_LIMIT) \
+                or (np.sum(count_matrix[(i+1):,i]) < LOWER_LIMIT):
+            counts[i] = 0
+        else:
+            counts[i] = column_sum
             
     return counts

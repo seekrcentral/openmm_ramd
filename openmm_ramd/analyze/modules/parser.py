@@ -67,13 +67,14 @@ def parse_ramd_log_file(ramd_log_filename):
     receptor_step = None
     accel_step = None
     num_simulations = 0
-        
+    
     with open(ramd_log_filename, "rb") as f:
         for i, bline in enumerate(f):
             try:
                 line = bline.decode("utf-8")
             except UnicodeDecodeError:
                 continue
+            
             new_trajectory_frame = False
             new_trajectory = False
             # Determine the log output frequency
@@ -221,7 +222,7 @@ def parse_ramd_log_file(ramd_log_filename):
                     old_ligand_step, receptor_step, accel_step)
         trajectories.append(trajectory)
         num_simulations += 1
-            
+    
     assert forceOutFreq is not None, \
         "The variable forceOutFreq was not assigned in the log file."
     if positionPrintFreq is None:
@@ -484,8 +485,14 @@ def get_last_lines_in_file(filename):
         f.seek (0, 2)           # Seek @ EOF
         fsize = f.tell()        # Get Size
         f.seek (max (fsize-2048, 0), 0) # Set pos @ last n chars
-        lines = f.readlines()       # Read to end
-        
+        lines = []
+        for i, bline in enumerate(f):
+            try:
+                line = bline.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+            
+            lines.append(line)
     return lines
 
 def escaped_successfully(log_filename):

@@ -184,3 +184,125 @@ def test_dest_milestone_from_cell_transition():
     assert dest_milestone == 3
     
     return
+
+def test_fill_gaps_in_matrix():
+    matrix1 = np.array(
+        [[0.0, 0.5, 0.0, 0.0, 0.0],
+         [1.0, 0.0, 0.0, 0.0, 0.0],
+         [0.0, 0.5, 0.0, 0.5, 0.0],
+         [0.0, 0.0, 0.0, 0.0, 1.0],
+         [0.0, 0.0, 0.0, 0.5, 0.0]])
+    
+    matrix_true1 = np.array(
+        [[0.0, 0.5, 0.0, 0.0, 0.0],
+         [1.0, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.5, 0.0, 0.5, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 1.0],
+         [0.0, 0.0, 0.0, 0.5, 0.0]])
+    
+    milestoning.fill_gaps_in_matrix(matrix1, normalize=False)
+    assert np.isclose(matrix1, matrix_true1).all()
+    
+    matrix2 = np.array(
+        [[0.0, 0.5, 0.0, 0.0, 0.0],
+         [1.0, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.5, 0.0, 0.5, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.0, 0.0, 0.5, 0.0]])
+    
+    matrix_true2 = np.array(
+        [[0.0, 0.5, 0.0, 0.0, 0.0],
+         [1.0, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.5, 0.0, 0.5, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 0.5],
+         [0.0, 0.0, 0.0, 0.5, 0.0]])
+    
+    milestoning.fill_gaps_in_matrix(matrix2, normalize=False)
+    assert np.isclose(matrix2, matrix_true2).all()
+    
+    matrix3 = np.array(
+        [[0.0, 0.5, 0.0, 0.0, 0.0],
+         [1.0, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.5, 0.0, 0.5, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.0, 0.0, 0.5, 0.0]])
+    
+    matrix_true3 = np.array(
+        [[0.0, 0.5, 0.0, 0.0, 0.0],
+         [1.0, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.5, 0.0, 0.5, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 1.0],
+         [0.0, 0.0, 0.0, 0.5, 0.0]])
+    
+    milestoning.fill_gaps_in_matrix(matrix3, normalize=True)
+    assert np.isclose(matrix3, matrix_true3).all()
+    
+    matrix4 = np.array(
+        [[0.0, 0.5, 0.0, 0.0, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.5, 0.0, 0.5, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 1.0],
+         [0.0, 0.0, 0.0, 0.5, 0.0]])
+    
+    matrix_true4 = np.array(
+        [[0.0, 0.5, 0.0, 0.0, 0.0],
+         [0.5, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.5, 0.0, 0.5, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 1.0],
+         [0.0, 0.0, 0.0, 0.5, 0.0]])
+    
+    milestoning.fill_gaps_in_matrix(matrix4, normalize=False)
+    assert np.isclose(matrix4, matrix_true4).all()
+    
+    matrix5 = np.array(
+        [[0.0, 0.5, 0.0, 0.0, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.5, 0.0, 0.5, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 1.0],
+         [0.0, 0.0, 0.0, 0.5, 0.0]])
+    
+    matrix_true5 = np.array(
+        [[0.0, 0.5, 0.0, 0.0, 0.0],
+         [1.0, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.5, 0.0, 0.5, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 1.0],
+         [0.0, 0.0, 0.0, 0.5, 0.0]])
+    
+    milestoning.fill_gaps_in_matrix(matrix5, normalize=True)
+    assert np.isclose(matrix5, matrix_true5).all()
+    
+    matrix6 = np.array(
+        [[0.0, 0.5, 0.0, 0.0, 0.0],
+         [1.0, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.5, 0.0, 0.0, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 1.0],
+         [0.0, 0.0, 0.0, 0.0, 0.0]])
+    
+    matrix_true6 = np.array(
+        [[0.0, 0.5, 0.0, 0.0, 0.0],
+         [1.0, 0.0, 0.5, 0.0, 0.0],
+         [0.0, 0.5, 0.0, 0.75, 0.0],
+         [0.0, 0.0, 0.5, 0.0, 1.0],
+         [0.0, 0.0, 0.0, 0.25, 0.0]])
+    milestoning.fill_gaps_in_matrix(matrix6, normalize=False)
+    assert np.isclose(matrix6, matrix_true6).all()
+    
+    return
+
+def test_fill_gaps_in_vector():
+    vector1 = np.array(
+        [[0.0],
+         [1.0],
+         [0.0],
+         [2.0],
+         [0.0]])
+    
+    vector_true1 = np.array(
+        [[1.0],
+         [1.0],
+         [1.5],
+         [2.0],
+         [2.0]])
+    
+    milestoning.fill_gaps_in_vector(vector1)
+    assert np.isclose(vector1, vector_true1).all()

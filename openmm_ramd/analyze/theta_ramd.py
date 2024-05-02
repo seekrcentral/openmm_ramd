@@ -118,7 +118,7 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
                 toy_mode=False, num_error_samples=100, 
                 stride_error_samples=None, skip_error_samples=None, 
                 cut_out_drift=False, image_directory=None, verbose=False,
-                display_xi_bin_plots=False):
+                display_xi_bin_plots=False, flatten_beyond_zero_count=True):
     if verbose:
         print(f"Using {num_milestones} milestones.")
         print(f"Using {num_angle_bins} angle bins.")
@@ -256,6 +256,9 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
     analysis = samples.Analysis(num_milestones, milestones, h, situation, 
                                 bulk_milestones, verbose)
     analysis.avg_unslanted_xi_bins(xi_bins)
+    if flatten_beyond_zero_count:
+        analysis.estimate_matrix_beyond_zero_count(starting_index)
+    
     if num_error_samples > 0:
         analysis.sample_error_matrices(
             num_error_samples, stride_error_samples, skip_error_samples)
@@ -294,7 +297,7 @@ def converge(ramd_log_files, num_intervals, num_milestones, num_angle_bins,
     fig, ax = plt.subplots()
     ax.errorbar(ending_indices, residence_times, residence_times_err,
             linestyle="-", marker="o", markersize=1, capsize=2)
-    plt.ylabel("Residence Time (s)")
+    plt.ylabel("Residence Time (ps)")
     plt.xlabel("Number of log files included")
     plt.title("Residence Time Convergence")
     plt.yscale("log", nonpositive="mask")
@@ -363,6 +366,17 @@ if __name__ == "__main__":
         "-C", "--convergence", dest="convergence", default=False,
         help="Perform a convergence analysis and generate a convergence plot", 
         action="store_true")
+    argparser.add_argument(
+        "-f", "--dont_flatten_beyond_zero_count", 
+        dest="dont_flatten_beyond_zero_count", default=True, 
+        help="Statistics are difficult to obtain for Theta RAMD milestoning "\
+        "results in high-energy regions. Once a zero-count entry is "\
+        "encountered, the program will, by default, assume that this is near "\
+        "the highest point of the barrier, and will flatten the statistics "\
+        "beyond that point, to counteract stochasticity, that would otherwise "\
+        "generate strange results if very little sampling is performed. "\
+        "If this flag is called, that function will be deactivated", 
+        action="store_false")
     
     args = argparser.parse_args()
     args = vars(args)
@@ -378,6 +392,7 @@ if __name__ == "__main__":
     verbose = args["verbose"]
     display_xi_bin_plots = args["display_xi_bin_plots"]
     convergence = args["convergence"]
+    flatten_beyond_zero_count = args["dont_flatten_beyond_zero_count"]
     
     analysis = theta_ramd(
         ramd_log_files, num_milestones, num_angle_bins, toy_mode=toy_mode, 
@@ -385,7 +400,8 @@ if __name__ == "__main__":
         stride_error_samples=stride_error_samples, 
         skip_error_samples=skip_error_samples, cut_out_drift=cut_out_drift, 
         image_directory=image_directory, verbose=verbose, 
-        display_xi_bin_plots=display_xi_bin_plots)
+        display_xi_bin_plots=display_xi_bin_plots, 
+        flatten_beyond_zero_count=flatten_beyond_zero_count)
     
     analysis.print_results()
     if convergence:
