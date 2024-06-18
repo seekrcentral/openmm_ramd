@@ -70,7 +70,9 @@ def tau_ramd(ramd_log_files, include_all_times=False):
         all_end_steps += end_steps
         
     completed_times = []
+    num_sims = 0
     for end_step in all_end_steps:
+        num_sims += 1
         if end_step is not None:
             completed_times.append(end_step * time_step)
     
@@ -80,7 +82,8 @@ def tau_ramd(ramd_log_files, include_all_times=False):
         "More than one completed trajectory needed"
     
     tau_comp, tau_mean, t_r, SD_r = bootstrap(completed_times)
-    return tau_comp, tau_mean, t_r, SD_r
+    num_exits = len(completed_times)
+    return tau_comp, tau_mean, t_r, SD_r, num_exits, num_sims
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description=__doc__)
@@ -99,8 +102,10 @@ if __name__ == "__main__":
     ramd_log_files = args["ramd_log_files"]
     include_all_times = args["include_all_times"]
     
-    tau_comp, tau_mean, t_r, SD_r = tau_ramd(ramd_log_files, include_all_times)
+    tau_comp, tau_mean, t_r, SD_r, num_exits, num_sims \
+        = tau_ramd(ramd_log_files, include_all_times)
     
+    print(f"{num_exits} of {num_sims} trajectories exited successfully.")
     print("Tau-RAMD results for this set of log files:")
     print("tau_comp (residence time):", tau_comp, "ps")
     print("tau mean (residence time):", tau_mean, "ps")

@@ -93,7 +93,7 @@ def dest_milestone_from_cell_transition(new_cell_id, old_cell_id):
 
 def make_milestoning_model(
         xi_bin_trajs, milestones, frame_time, num_milestones,
-        remove_unbalanced_frame_counts=False):
+        remove_unbalanced_frame_counts=False, debug_filename=None):
     
     frame_time = float(frame_time)
     count_matrix = np.zeros((num_milestones, num_milestones), dtype=np.int32)
@@ -104,10 +104,16 @@ def make_milestoning_model(
     avg_time_vector = np.zeros((num_milestones, 1))
     avg_time_matrix = np.zeros((num_milestones, num_milestones))
     
+    if debug_filename is not None:
+        with open(debug_filename, "a") as f:
+            f.write("src, dest, inc_time, cv_val, src_pos, dest_pos, "\
+                    "traj_time\n")
+    
     for i, traj in enumerate(xi_bin_trajs):
         src_milestone = None
         new_cell_id = None
         src_time = 0.0
+        traj_time = 0.0
         
         # Here, I need to skip the counts and times the first time any state
         #  is visited within a trajectory.
@@ -116,10 +122,19 @@ def make_milestoning_model(
         first_milestone = None
         for j, frame in enumerate(traj):
             [cv_val, xi_val] = frame
+            if j == 0:
+                xi_val0 = xi_val
+                if debug_filename is not None:
+                    with open(debug_filename, "a") as f:
+                        f.write(f"Force change to xi: {xi_val:.3f}\n")
+                    
+            assert xi_val == xi_val0, "Xi value changes during simulation. "\
+                "Trajectory: {i}, Frame: {j}"
             # Find what cell it's in
             old_cell_id = new_cell_id
             new_cell_id = num_milestones
             src_time += frame_time
+            traj_time += frame_time
             for k, milestone in enumerate(milestones):
                 if cv_val < milestone:
                     new_cell_id = k
@@ -140,6 +155,13 @@ def make_milestoning_model(
                         count_matrix[dest_milestone, src_milestone] += 1
                         #if j < len(traj)-1:
                         time_matrix[dest_milestone, src_milestone] += src_time
+                        if debug_filename is not None:
+                            with open(debug_filename, "a") as f:
+                                f.write(f"{src_milestone}, {dest_milestone}, "\
+                                        f"{src_time:.3f}, {cv_val:.3f}, "\
+                                        f"{milestones[src_milestone]:.3f}, "\
+                                        f"{milestones[dest_milestone]:.3f}, "\
+                                        f"{traj_time:.3f}\n")
                         
                     src_milestone = dest_milestone
                     src_time = 0.0
@@ -409,7 +431,7 @@ def compute_stationary_probabilities(transition_matrix, avg_time_vector,
     
     q_i = initial_prob_vector @ np.linalg.matrix_power(
         transition_matrix_with_leak.T, MATRIX_EXPONENTIAL)    
-    if np.sum(q_i) > 0.0:
+    if (np.sum(q_i) > 0.0) and np.isfinite(np.sum(q_i)):
         q_i = q_i / np.sum(q_i)
     
     p_i = np.zeros(num_milestones)

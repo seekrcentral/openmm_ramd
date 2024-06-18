@@ -17,7 +17,8 @@ import openmm_ramd.analyze.modules.error_margins as error_margins
 kB_kcal_per_mol_per_kelvin = unit.MOLAR_GAS_CONSTANT_R.in_units_of(
     unit.kilocalories_per_mole / unit.kelvin)
 
-MAX_PLOT_ENERGY = 25.0 # kcal/mol
+MAX_PLOT_ENERGY = 35.0 # kcal/mol
+PLOT_MARGIN = 4.0 # kcal/mol
 FAST_RATE = 1e9
 TINY_RATE = 1e-9
 TINY_PROB = 1e-9
@@ -44,8 +45,9 @@ class Xi_bin():
     """
     
     """
-    def __init__(self, num_milestones, milestones, lowest_boundary, midpoint, 
-                 highest_boundary, situation):
+    def __init__(self, index, num_milestones, milestones, lowest_boundary, 
+                 midpoint, highest_boundary, situation, debug_directory=None):
+        self.index = index
         self.num_milestones = num_milestones
         self.milestones = milestones
         self.lowest_boundary = lowest_boundary
@@ -56,6 +58,7 @@ class Xi_bin():
         self.main_data_sample_unslanted = None
         self.counts = None
         self.situation = situation
+        self.debug_directory = debug_directory
         return
     
     def assign_main_data_sample(self, count_matrix, time_vector, 
@@ -69,13 +72,24 @@ class Xi_bin():
             self.num_milestones, count_matrix)
         self.main_data_sample.Q = milestoning.make_rate_matrix(
             self.num_milestones, self.main_data_sample.K, avg_time_vector)
+        if self.debug_directory is not None:
+            K_matrix_filename = os.path.join(
+                self.debug_directory, f"slanted_K_matrix_{self.index}.txt")
+            np.savetxt(K_matrix_filename, self.main_data_sample.K, fmt="%.3e")
+            Q_matrix_filename = os.path.join(
+                self.debug_directory, f"slanted_Q_matrix_{self.index}.txt")
+            np.savetxt(Q_matrix_filename, self.main_data_sample.Q, fmt="%.3e")
+        
         return
     
     def make_profiles(self, starting_index, wrap_sink, unitless_beta,
                               data_sample=None):
         h = self.milestones[1] - self.milestones[0]
         if data_sample is None:
+            using_main = True
             data_sample = self.main_data_sample
+        else:
+            using_main = False
         milestoning.fill_gaps_in_matrix(data_sample.K, normalize=True)
         data_sample.p_i = milestoning.compute_stationary_probabilities(
             data_sample.K, data_sample.t, self.num_milestones, 
@@ -86,6 +100,20 @@ class Xi_bin():
         data_sample.diffusion_profile = milestoning.compute_diffusion_coefficients(
             data_sample.Q, data_sample.K, data_sample.free_energy_profile, 
             self.milestones, unitless_beta)
+        
+        if using_main and self.debug_directory is not None:
+            p_i_vector_filename = os.path.join(
+                self.debug_directory, f"p_i_{self.index}.txt")
+            np.savetxt(p_i_vector_filename, data_sample.p_i, fmt="%.3e")
+            free_energy_vector_filename = os.path.join(
+                self.debug_directory, f"slanted_free_energy_{self.index}.txt")
+            np.savetxt(free_energy_vector_filename, 
+                       data_sample.free_energy_profile, fmt="%.3e")
+            diffusion_vector_filename = os.path.join(
+                self.debug_directory, f"diffusion_{self.index}.txt")
+            np.savetxt(diffusion_vector_filename, data_sample.diffusion_profile,
+                       fmt="%.3e")
+        
         return
     
     def assign_unslanted_data(
@@ -108,7 +136,6 @@ class Xi_bin():
                 self.main_data_sample.t, self.main_data_sample.t_matrix, 
                 slanting_force, beta)
         unslanted_energy_profile = np.zeros(self.num_milestones)
-        
         new_data_sample = self.assign_unslanted_data(
             unslanted_avg_time_vector, unslanted_transition_matrix, 
             unslanted_rate_matrix)
@@ -116,7 +143,18 @@ class Xi_bin():
         new_data_sample.R_i = self.main_data_sample.R_i
         new_data_sample.free_energy_profile = unslanted_energy_profile
         self.main_data_sample_unslanted = new_data_sample
-        
+        if self.debug_directory is not None:
+            K_matrix_filename = os.path.join(
+                self.debug_directory, f"unslanted_K_matrix_{self.index}.txt")
+            np.savetxt(K_matrix_filename, unslanted_transition_matrix, fmt="%.3e")
+            Q_matrix_filename = os.path.join(
+                self.debug_directory, f"unslanted_Q_matrix_{self.index}.txt")
+            np.savetxt(Q_matrix_filename, unslanted_rate_matrix, fmt="%.3e")
+            avg_time_vector_filename = os.path.join(
+                self.debug_directory, 
+                f"unslanted_avg_time_vector_{self.index}.txt")
+            np.savetxt(avg_time_vector_filename, unslanted_avg_time_vector,
+                       fmt="%.3e")
         return
     
 class Analysis:
@@ -124,7 +162,7 @@ class Analysis:
     
     """
     def __init__(self, num_milestones, milestones, h, situation, 
-                 bulk_milestones, verbose=False):
+                 bulk_milestones, verbose=False, debug_directory=None):
         self.num_milestones = num_milestones
         self.milestones = milestones
         self.main_data_sample = None
@@ -145,6 +183,7 @@ class Analysis:
         self.num_error_samples = 0
         self.situation = situation
         self.verbose = verbose
+        self.debug_directory = debug_directory
         return
     
     def avg_unslanted_xi_bins(self, xi_bins):
@@ -182,10 +221,37 @@ class Analysis:
                 transition_matrix_avg[:, j] = transition_matrix_sum[:, j] / counts_sum[j]
                 avg_time_vector_avg[j, 0] = avg_time_vector_sum[j, 0] / counts_sum[j]
         
+        if self.debug_directory:
+            Q_gaps_filename = os.path.join(self.debug_directory, 
+                                           "Q_all_gaps.txt")
+            np.savetxt(Q_gaps_filename, rate_matrix_avg, fmt="%.3e")
+            K_gaps_filename = os.path.join(self.debug_directory, 
+                                           "K_all_gaps.txt")
+            np.savetxt(K_gaps_filename, transition_matrix_avg, fmt="%.3e")
+            time_gaps_filename = os.path.join(self.debug_directory, 
+                                           "avg_time_vector_all_gaps.txt")
+            np.savetxt(time_gaps_filename, avg_time_vector_avg, fmt="%.3e")
+            counts_sum_filename = os.path.join(self.debug_directory,
+                                               "counts_all.txt")
+            np.savetxt(counts_sum_filename, counts_sum, fmt="%d")
+        
         self.counts_sum = counts_sum
         milestoning.fill_gaps_in_matrix(rate_matrix_avg, normalize=False, flat=True)
         milestoning.fill_gaps_in_matrix(transition_matrix_avg, normalize=True, flat=True)
         milestoning.fill_gaps_in_vector(avg_time_vector_avg)
+        
+        if self.debug_directory:
+            Q_all_filename = os.path.join(self.debug_directory, 
+                                           "Q_all.txt")
+            np.savetxt(Q_all_filename, rate_matrix_avg, fmt="%.3e")
+            K_all_filename = os.path.join(self.debug_directory, 
+                                           "K_all.txt")
+            np.savetxt(K_all_filename, transition_matrix_avg, fmt="%.3e")
+            time_all_filename = os.path.join(self.debug_directory, 
+                                           "avg_time_vector_all.txt")
+            np.savetxt(time_all_filename, avg_time_vector_avg, fmt="%.3e")
+            
+        
         # TODO: remove
         #correct_milestoning_model_for_ramd(
         #    rate_matrix_avg, transition_matrix_avg, avg_time_vector_avg)
@@ -254,6 +320,14 @@ class Analysis:
                 
         if self.situation not in [1, 2, 3]:
             raise Exception(f"Not yet implemented: situation {self.situation}")
+        
+        if self.debug_directory:
+            Q_flat_filename = os.path.join(self.debug_directory, "Q_flat.txt")
+            np.savetxt(Q_flat_filename, self.main_data_sample.Q, fmt="%.3e")
+            K_flat_filename = os.path.join(self.debug_directory, "K_flat.txt")
+            np.savetxt(K_flat_filename, self.main_data_sample.K, fmt="%.3e")
+        
+        return
     
     def sample_error_matrices(self, num_error_samples, stride_error_samples, 
                               skip_error_samples):
@@ -397,12 +471,13 @@ class Analysis:
             self.k_off, self.k_off_error))
         return
     
-    def create_plots(self, directory=None):
-        pi_fig, ax1 = plt.subplots()
+    def create_plots(self, directory=None, show_plots=True):
+        pi_fig, ax1 = plt.subplots(figsize=(10, 8))
         ax1.errorbar(np.round(self.milestones[:-1], 3), self.free_energy_profile[:-1], 
                      yerr=self.free_energy_profile_err[:-1], color="r", ecolor="r", 
                      capsize=2)
-        upper_limit = np.min([np.max(self.free_energy_profile[:-1]), MAX_PLOT_ENERGY])
+        upper_limit = np.min([np.max(self.free_energy_profile[:-1])+PLOT_MARGIN, 
+                              MAX_PLOT_ENERGY])
         lower_limit = np.min(self.free_energy_profile[:-1])
         ax1.set_ylim(bottom=lower_limit, top=upper_limit)
         ax1.set_xticks(np.round(self.milestones[:-1], 3), 
@@ -422,23 +497,30 @@ class Analysis:
         ax3.errorbar(np.round(self.milestones, 3), self.counts_sum, 
                      yerr=np.zeros(self.num_milestones), color="g", ecolor="g", 
                      capsize=0)
-        ax3.set_ylim(0.0, 1.2*np.max(self.counts_sum))
+        ax3.set_ylim(1.0, 1.2*np.max(self.counts_sum))
+        ax3.set_yscale("log", nonpositive="mask")
         ax3.spines['right'].set_position(('outward', 65))
         
         plt.tight_layout()
-        if directory is None:
-            plt.show()
-        else:
-            plt.savefig(os.path.join(directory, "pmf_diffusion.png"))
         
-def make_xi_bins(num_xi_bins, num_milestones, milestones, situation):
+        if show_plots:
+            if directory is None:
+                plt.show()
+            else:
+                plt.savefig(os.path.join(directory, "pmf_diffusion.png"))
+                
+        return ax1, ax2, ax3
+        
+def make_xi_bins(num_xi_bins, num_milestones, milestones, situation, 
+                 debug_directory=None):
     xi_bins = []
     xi_bins_ranges = np.linspace(-1.0, 1.0, num_xi_bins+1)
     for j in range(num_xi_bins):
         midpoint = 0.5 * (xi_bins_ranges[j] + xi_bins_ranges[j+1])
         #xi_values.append(xi_value)
-        xi_bin = Xi_bin(num_milestones, milestones, xi_bins_ranges[j], midpoint, 
-                        xi_bins_ranges[j+1], situation)
+        xi_bin = Xi_bin(j, num_milestones, milestones, xi_bins_ranges[j], 
+                        midpoint, xi_bins_ranges[j+1], situation, 
+                        debug_directory)
         xi_bins.append(xi_bin)
         
     return xi_bins

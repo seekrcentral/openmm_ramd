@@ -67,6 +67,7 @@ def parse_ramd_log_file(ramd_log_filename):
     receptor_step = None
     accel_step = None
     num_simulations = 0
+    num_exit_events = 0
     
     with open(ramd_log_filename, "rb") as f:
         for i, bline in enumerate(f):
@@ -190,6 +191,10 @@ def parse_ramd_log_file(ramd_log_filename):
                     new_trajectory_frame = True
                 new_trajectory = True
             
+            exit_event_search = re.match("EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED", line)
+            if exit_event_search:
+                num_exit_events += 1
+            
             if new_trajectory:
                 if len(trajectory) > 0:
                     trajectories.append(trajectory)
@@ -233,7 +238,7 @@ def parse_ramd_log_file(ramd_log_filename):
         "The variable timeStep was not assigned in the log file."
     
     return trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, \
-        num_simulations, temperature, max_dist
+        num_simulations, temperature, max_dist, num_exit_events
 
 def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
     """
@@ -399,7 +404,8 @@ def get_cv_vec_principal_component(trajectories, mean_vec=None):
     
     return norm_avg_vec
 
-def condense_trajectories(trajectories, max_dist, onlyZ=False):
+def condense_trajectories(trajectories, max_dist, onlyZ=False, 
+                          debug_directory=None):
     """
     Reduce trajectories to 1D, and compute xi values
     
@@ -438,6 +444,12 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False):
         norm_avgx = norm_avg_vec[0]
         norm_avgy = norm_avg_vec[1]
         norm_avgz = norm_avg_vec[2]
+        if debug_directory is not None:
+            mean_vec_filename = os.path.join(debug_directory, "mean_vec.txt")
+            np.savetxt(mean_vec_filename, mean_vec, fmt="%.3f")
+            norm_avg_vec_filename = os.path.join(
+                debug_directory, "norm_avg_vec.txt")
+            np.savetxt(norm_avg_vec_filename, norm_avg_vec, fmt="%.3f")
     
     one_dim_trajs = []
     for i, trajectory in enumerate(trajectories):

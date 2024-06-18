@@ -81,8 +81,12 @@ def irreversible_stochastic_matrix_algorithm_sample(
     if (log_prior_probability_old == 0.0) or (log_prior_probability_new == 0.0):
         p_acc = 0.0
     else:
-        log_p_Q_old = N[i,j] * np.log(np.abs(Qnew[i,j]))  - Qnew[i,j] * R[i,0]
-        log_p_Q_new = N[i,j] * np.log(np.abs(Qnew[i,j] - delta)) \
+        N_eff = Qnew[i,j] * R[i,0]
+        #log_p_Q_old = N[i,j] * np.log(np.abs(Qnew[i,j]))  - Qnew[i,j] * R[i,0]
+        #log_p_Q_new = N[i,j] * np.log(np.abs(Qnew[i,j] - delta)) \
+        #    - (Qnew[i,j] - delta) * R[i,0]
+        log_p_Q_old = N_eff * np.log(np.abs(Qnew[i,j]))  - Qnew[i,j] * R[i,0]
+        log_p_Q_new = N_eff * np.log(np.abs(Qnew[i,j] - delta)) \
             - (Qnew[i,j] - delta) * R[i,0]
         p_acc = log_p_Q_new - log_p_Q_old + log_prior_probability_new \
             - log_prior_probability_old
