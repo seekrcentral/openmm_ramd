@@ -509,7 +509,8 @@ def get_last_lines_in_file(filename):
 
 def escaped_successfully(log_filename):
     last_lines = get_last_lines_in_file(log_filename)
-    for i, line in enumerate(last_lines):
+    for i, bline in enumerate(last_lines):
+        line = bline.decode("utf-8")
         exit_event_search = re.match("EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED", line)
         if exit_event_search:
             return True
