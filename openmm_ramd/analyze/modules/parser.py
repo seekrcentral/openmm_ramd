@@ -515,12 +515,7 @@ def escaped_successfully(log_filename):
         except (UnicodeDecodeError, AttributeError):
             line = bline
         
-        try:
-            exit_event_search = re.match("EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED", line)
-        except TypeError:
-            print("line:", line)
-            exit()
-        
+        exit_event_search = re.match("EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED", line)
         if exit_event_search:
             return True
         

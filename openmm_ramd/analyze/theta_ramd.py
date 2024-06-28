@@ -141,7 +141,8 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
     num_total_exits = 0
     if verbose:
         print("Now loading log files...")
-        
+    
+    print("mark0")
     for ramd_log_filename in ramd_log_file_list:
         trajectories, force_out_freq_, position_print_freq_, forceRAMD_, \
             time_step_, num_trajectories_, temperature_, max_dist_, \
@@ -191,10 +192,12 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
     
     # Each trajectory represents a set of frames between force changes
     # Align the trajectories and convert to 1D, and xi values
+    print("mark10")
     one_dim_trajs = parser.condense_trajectories(
         trajectory_list, max_dist, onlyZ=toy_mode, 
         debug_directory=debug_directory)
-        
+    
+    print("mark20")
     #Construct a milestoning model based on trajectory fragments
     milestones, min_location, max_location, starting_cv_val, starting_index, h,\
         situation = milestoning.uniform_milestone_locations(
@@ -217,6 +220,7 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
         print("milestones:", np.array(milestones), "h:", f"{h:.3f} (A)")
         print("starting_index:", starting_index)
     
+    print("mark30")
     xi_bins = samples.make_xi_bins(
         num_angle_bins, num_milestones, milestones, situation, debug_directory)
     for i, trajectory in enumerate(one_dim_trajs):
@@ -238,7 +242,7 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
     #forceRAMD_in_nm_unitless = forceRAMD * A_per_nm
     #forceRAMD_in_nm = forceRAMD_in_nm_unitless * unit.kilocalories_per_mole
     #forceRAMD_in_A = forceRAMD * unit.kilocalories_per_mole
-    
+    print("mark40")
     for i, xi_bin in enumerate(xi_bins):
         xi = xi_bin.midpoint
         if verbose:
@@ -299,6 +303,7 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
                        xi_bin.main_data_sample_unslanted.free_energy_profile,
                        fmt="%.3e")
     
+    print("mark50")
     if display_xi_bin_plots:
         make_xi_bin_plots(milestones, xi_bins, image_directory)
         
