@@ -442,7 +442,7 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False,
             trajectories, boundary)
         print("mark13")
         norm_avg_vec = get_cv_vec_principal_component(trajectories, mean_vec)
-        print("mark14"
+        print("mark14")
         norm_avgx = norm_avg_vec[0]
         norm_avgy = norm_avg_vec[1]
         norm_avgz = norm_avg_vec[2]
