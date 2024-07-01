@@ -430,7 +430,7 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False,
     CYLINDER_MAX_RADIUS = 0.5 * max_dist
     #if len(trajectory) == 0:
     #    continue
-    
+    print("mark11")
     if (CONDENSE_MODE == "lig_avg") and not onlyZ:
         norm_avg_vec = get_cv_vec_traj_avg(trajectories)
         norm_avgx = norm_avg_vec[0]
@@ -440,7 +440,9 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False,
         boundary = 0.5 * max_dist
         mean_vec = get_mean_vec_for_frames_greater_than_boundary(
             trajectories, boundary)
+        print("mark13")
         norm_avg_vec = get_cv_vec_principal_component(trajectories, mean_vec)
+        print9"mark14"
         norm_avgx = norm_avg_vec[0]
         norm_avgy = norm_avg_vec[1]
         norm_avgz = norm_avg_vec[2]
@@ -450,7 +452,7 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False,
             norm_avg_vec_filename = os.path.join(
                 debug_directory, "norm_avg_vec.txt")
             np.savetxt(norm_avg_vec_filename, norm_avg_vec, fmt="%.3f")
-    
+    print("mark15")
     one_dim_trajs = []
     for i, trajectory in enumerate(trajectories):
         one_dim_traj = []
@@ -486,7 +488,7 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False,
             one_dim_traj.append([cv_val, xi_val])
             
         one_dim_trajs.append(one_dim_traj)
-    
+    print("mark19")
     return one_dim_trajs
 
 def get_last_lines_in_file(filename):
