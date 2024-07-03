@@ -41,6 +41,21 @@ class Data_sample():
         self.MFPT = None
         self.k_off = None
 
+class Xi_bin_traj():
+    """
+    
+    """
+    def __init__(self, index, num_milestones, milestones, lowest_boundary,
+                 midpoint, highest_boundary, situation):
+        self.trajs = []
+        self.index = index
+        self.num_milestones = num_milestones
+        self.milestones = milestones
+        self.lowest_boundary = lowest_boundary
+        self.midpoint = midpoint
+        self.highest_boundary = highest_boundary
+        self.situation = situation
+
 class Xi_bin():
     """
     
@@ -53,7 +68,9 @@ class Xi_bin():
         self.lowest_boundary = lowest_boundary
         self.midpoint = midpoint
         self.highest_boundary = highest_boundary
-        self.trajs = []
+        self.count_matrix = np.zeros((num_milestones, num_milestones))
+        self.time_vector = np.zeros((num_milestones, 1))
+        self.time_matrix = np.zeros((num_milestones, num_milestones))
         self.main_data_sample = None
         self.main_data_sample_unslanted = None
         self.counts = None
@@ -521,6 +538,18 @@ def make_xi_bins(num_xi_bins, num_milestones, milestones, situation,
         xi_bin = Xi_bin(j, num_milestones, milestones, xi_bins_ranges[j], 
                         midpoint, xi_bins_ranges[j+1], situation, 
                         debug_directory)
+        xi_bins.append(xi_bin)
+        
+    return xi_bins
+
+def make_xi_bin_trajs(num_xi_bins, num_milestones, milestones, situation):
+    xi_bins = []
+    xi_bins_ranges = np.linspace(-1.0, 1.0, num_xi_bins+1)
+    for j in range(num_xi_bins):
+        midpoint = 0.5 * (xi_bins_ranges[j] + xi_bins_ranges[j+1])
+        #xi_values.append(xi_value)
+        xi_bin = Xi_bin_traj(j, num_milestones, milestones, xi_bins_ranges[j], 
+                        midpoint, xi_bins_ranges[j+1], situation)
         xi_bins.append(xi_bin)
         
     return xi_bins

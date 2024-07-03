@@ -131,7 +131,7 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
         print(f"Using {num_milestones} milestones.")
         print(f"Using {num_angle_bins} angle bins.")
     
-    trajectory_list = []
+    
     force_out_freq = None
     position_print_freq = None
     forceRAMD = None
@@ -139,131 +139,141 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
     temperature = None
     max_dist = None
     num_total_exits = 0
+    num_total_trajs = 0
+    num_total_log_files = len(ramd_log_file_list)
+    milestones = None
+    count_matrix = None
+    time_vector = None
+    time_matrix = None
+    xi_bins = None
     if verbose:
         print("Now loading log files...")
     
-    print("mark0")
-    for ramd_log_filename in ramd_log_file_list:
-        trajectories, force_out_freq_, position_print_freq_, forceRAMD_, \
-            time_step_, num_trajectories_, temperature_, max_dist_, \
-            num_exits = parser.parse_ramd_log_file(
-                ramd_log_filename)
-        num_total_exits += num_exits
-        if force_out_freq is None:
-            force_out_freq = force_out_freq_
-            position_print_freq = position_print_freq_
-            forceRAMD = forceRAMD_
-            time_step = time_step_
-            temperature = temperature_
-            max_dist = max_dist_
-        else:
-            assert force_out_freq == force_out_freq_, \
-                "RAMD logs contain differing force_out_freq values."
-            assert position_print_freq == position_print_freq_, \
-                "RAMD logs contain differing position_print_freq values."
-            assert forceRAMD == forceRAMD_, \
-                "RAMD logs contain differing forceRAMD values."
-            assert time_step == time_step_, \
-                "RAMD logs contain differing time_step values."
-            assert temperature == temperature_, \
-                "RAMD logs contain differing temperature values."
-            assert max_dist == max_dist_, \
-                "RAMD logs contain differing max_dist values."
+    ramd_log_chunks = parser.make_log_file_chunks(ramd_log_file_list)
+    for chunk_index, ramd_log_chunk in enumerate(ramd_log_chunks):
+        trajectory_list = []
+        for ramd_log_filename in ramd_log_chunk:
+            trajectories, force_out_freq_, position_print_freq_, forceRAMD_, \
+                time_step_, num_trajectories_, temperature_, max_dist_, \
+                num_exits = parser.parse_ramd_log_file(
+                    ramd_log_filename)
+            num_total_trajs += num_trajectories_
+            num_total_exits += num_exits
+            if force_out_freq is None:
+                force_out_freq = force_out_freq_
+                position_print_freq = position_print_freq_
+                forceRAMD = forceRAMD_
+                time_step = time_step_
+                temperature = temperature_
+                max_dist = max_dist_
+            else:
+                assert force_out_freq == force_out_freq_, \
+                    "RAMD logs contain differing force_out_freq values."
+                assert position_print_freq == position_print_freq_, \
+                    "RAMD logs contain differing position_print_freq values."
+                assert forceRAMD == forceRAMD_, \
+                    "RAMD logs contain differing forceRAMD values."
+                assert time_step == time_step_, \
+                    "RAMD logs contain differing time_step values."
+                assert temperature == temperature_, \
+                    "RAMD logs contain differing temperature values."
+                assert max_dist == max_dist_, \
+                    "RAMD logs contain differing max_dist values."
+                
+            trajectory_list += trajectories
+        
+        beta = 1.0 / (temperature * unit.kelvin \
+                      * samples.kB_kcal_per_mol_per_kelvin)
+        unitless_beta = beta.value_in_unit(unit.mole / unit.kilocalorie)
+        # Each trajectory represents a set of frames between force changes
+        # Align the trajectories and convert to 1D, and xi values
+        one_dim_trajs = parser.condense_trajectories(
+            trajectory_list, max_dist, onlyZ=toy_mode, 
+            debug_directory=debug_directory)
+        
+        #Construct a milestoning model based on trajectory fragments
+        if milestones is None:
+            milestones, min_location, max_location, starting_cv_val, \
+                starting_index, h, situation \
+                = milestoning.uniform_milestone_locations(
+                    one_dim_trajs, num_milestones, max_dist)
+    
+            if situation == 1:
+                # a forward exit (parallel to CV)
+                bulk_milestones = [num_milestones - 1]
+            elif situation == 2:
+                # a backward exit (antiparallel to CV)
+                bulk_milestones = [0]
+            else:
+                bulk_milestones = [0, num_milestones - 1]
+                
+            if debug_directory is not None:
+                milestones_filename = os.path.join(debug_directory, 
+                                                   "milestones.txt")
+                np.savetxt(milestones_filename, np.array(milestones), fmt="%.3e")
             
-        trajectory_list += trajectories
-    
-    beta = 1.0 / (temperature * unit.kelvin \
-                  * samples.kB_kcal_per_mol_per_kelvin)
-    unitless_beta = beta.value_in_unit(unit.mole / unit.kilocalorie)
-    
-    if verbose:
-        print("Number of trajectories extracted from log file(s):", 
-              len(trajectory_list))
-        print("force_out_freq:", force_out_freq)
-        print("position_print_freq:", position_print_freq)
-        print("forceRAMD:", forceRAMD, "kcal/(mole * Angstrom)")
-        print("time_step:", time_step, "ps")
-        print("temperature:", temperature, "K")
-        print("max_dist:", max_dist, "A")
-        print("beta:", beta)
+            if verbose:
+                np.set_printoptions(precision=3)
+                print("milestones:", np.array(milestones), "h:", f"{h:.3f} (A)")
+                print("starting_index:", starting_index)
+            
+            xi_bins = samples.make_xi_bins(
+                num_angle_bins, num_milestones, milestones, situation, 
+                debug_directory)
         
-    print(f"{num_total_exits} exited successfully of "\
-          f"{len(ramd_log_file_list)} log files.")
-    
-    # Each trajectory represents a set of frames between force changes
-    # Align the trajectories and convert to 1D, and xi values
-    print("mark10")
-    one_dim_trajs = parser.condense_trajectories(
-        trajectory_list, max_dist, onlyZ=toy_mode, 
-        debug_directory=debug_directory)
-    
-    print("mark20")
-    #Construct a milestoning model based on trajectory fragments
-    milestones, min_location, max_location, starting_cv_val, starting_index, h,\
-        situation = milestoning.uniform_milestone_locations(
-            one_dim_trajs, num_milestones, max_dist)
-    if situation == 1:
-        # a forward exit (parallel to CV)
-        bulk_milestones = [num_milestones - 1]
-    elif situation == 2:
-        # a backward exit (antiparallel to CV)
-        bulk_milestones = [0]
-    else:
-        bulk_milestones = [0, num_milestones - 1]
+        xi_bin_trajs = samples.make_xi_bin_trajs(
+            num_angle_bins, num_milestones, milestones, situation)
         
-    if debug_directory is not None:
-        milestones_filename = os.path.join(debug_directory, "milestones.txt")
-        np.savetxt(milestones_filename, np.array(milestones), fmt="%.3e")
-    
-    if verbose:
-        np.set_printoptions(precision=3)
-        print("milestones:", np.array(milestones), "h:", f"{h:.3f} (A)")
-        print("starting_index:", starting_index)
-    
-    print("mark30")
-    xi_bins = samples.make_xi_bins(
-        num_angle_bins, num_milestones, milestones, situation, debug_directory)
-    for i, trajectory in enumerate(one_dim_trajs):
-        if len(trajectory) == 0:
-            continue
-        traj_xi = trajectory[0][1]
-        found_bin = False
-        for j, xi_bin in enumerate(xi_bins):
-            if (traj_xi >= xi_bin.lowest_boundary) \
-                    and (traj_xi <= xi_bin.highest_boundary):
-                xi_bin.trajs.append(trajectory)
-                found_bin = True
-                break
+        for i, trajectory in enumerate(one_dim_trajs):
+            if len(trajectory) == 0:
+                continue
+            traj_xi = trajectory[0][1]
+            found_bin = False
+            for j, xi_bin_traj in enumerate(xi_bin_trajs):
+                if (traj_xi >= xi_bin_traj.lowest_boundary) \
+                        and (traj_xi <= xi_bin_traj.highest_boundary):
+                    xi_bin_traj.trajs.append(trajectory)
+                    found_bin = True
+                    break
+            
+            if not found_bin:
+                raise Exception(f"xi value {traj_xi} not placed in bin.")
         
-        if not found_bin:
-            raise Exception(f"xi value {traj_xi} not placed in bin.")
+        frame_time = time_step * position_print_freq
     
-    frame_time = time_step * position_print_freq
-    #forceRAMD_in_nm_unitless = forceRAMD * A_per_nm
-    #forceRAMD_in_nm = forceRAMD_in_nm_unitless * unit.kilocalories_per_mole
-    #forceRAMD_in_A = forceRAMD * unit.kilocalories_per_mole
-    print("mark40")
+        for i, xi_bin_traj in enumerate(xi_bin_trajs):
+            if verbose:
+                print(f"num trajectories in bin {i}: {len(xi_bin_traj.trajs)}")
+            if len(xi_bin_traj.trajs) == 0 and len(ramd_log_chunks) == 1:
+                print("All angle bins need trajectories. Either run more "\
+                      "simulations or decrease the number of angle bins.")
+                raise InsufficientTrajectoriesError
+            
+            if debug_directory is None:
+                debug_filename = None
+            else:
+                debug_filename = os.path.join(
+                    debug_directory, 
+                    f"milestone_stats_{i}_chunk_{chunk_index}.log")
+                
+            count_matrix_chunk, time_vector_chunk, time_matrix_chunk \
+                = milestoning.make_milestoning_model(
+                    xi_bin_traj.trajs, milestones, frame_time, num_milestones,
+                    remove_unbalanced_frame_counts=cut_out_drift, 
+                    debug_filename=debug_filename)
+            
+            xi_bins[i].count_matrix += count_matrix_chunk
+            xi_bins[i].time_vector += time_vector_chunk
+            xi_bins[i].time_matrix += time_matrix_chunk
+            
+    # Combine stats into Xi_bins
     for i, xi_bin in enumerate(xi_bins):
-        xi = xi_bin.midpoint
-        if verbose:
-            print(f"num trajectories in bin {i}: {len(xi_bin.trajs)}")
-        if len(xi_bin.trajs) == 0:
-            print("All angle bins need trajectories. Either run more "\
-                  "simulations or decrease the number of angle bins.")
-            raise InsufficientTrajectoriesError
-        
-        if debug_directory is None:
-            debug_filename = None
-        else:
-            debug_filename = os.path.join(
-                debug_directory, f"milestone_stats_{i}.log")
-            
-        count_matrix, time_vector, time_matrix, avg_time_vector, \
-            avg_time_matrix = milestoning.make_milestoning_model(
-                xi_bin.trajs, milestones, frame_time, num_milestones,
-                remove_unbalanced_frame_counts=cut_out_drift, 
-                debug_filename=debug_filename)
-        
+        count_matrix = xi_bin.count_matrix
+        time_vector = xi_bin.time_vector
+        time_matrix = xi_bin.time_matrix
+        avg_time_vector, avg_time_matrix\
+            = milestoning.make_avg_milestone_statistics(
+                count_matrix, time_vector, time_matrix)
         if debug_directory is not None:
             count_matrix_filename = os.path.join(
                 debug_directory, f"count_matrix_{i}.txt")
@@ -303,7 +313,20 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
                        xi_bin.main_data_sample_unslanted.free_energy_profile,
                        fmt="%.3e")
     
-    print("mark50")
+    if verbose:
+        print("Number of trajectories extracted from log file(s):", 
+              num_total_trajs)
+        print("force_out_freq:", force_out_freq)
+        print("position_print_freq:", position_print_freq)
+        print("forceRAMD:", forceRAMD, "kcal/(mole * Angstrom)")
+        print("time_step:", time_step, "ps")
+        print("temperature:", temperature, "K")
+        print("max_dist:", max_dist, "A")
+        print("beta:", beta)
+        
+    print(f"{num_total_exits} exited successfully of "\
+          f"{num_total_log_files} log files.")
+    
     if display_xi_bin_plots:
         make_xi_bin_plots(milestones, xi_bins, image_directory)
         

@@ -99,10 +99,6 @@ def make_milestoning_model(
     count_matrix = np.zeros((num_milestones, num_milestones), dtype=np.int32)
     time_vector = np.zeros((num_milestones, 1))
     time_matrix = np.zeros((num_milestones, num_milestones))
-    #time_vector_up = np.zeros((num_milestones, 1))
-    #time_vector_down = np.zeros((num_milestones, 1))
-    avg_time_vector = np.zeros((num_milestones, 1))
-    avg_time_matrix = np.zeros((num_milestones, num_milestones))
     
     if debug_filename is not None:
         with open(debug_filename, "a") as f:
@@ -198,24 +194,19 @@ def make_milestoning_model(
                         first_time = first_times[j]
                         time_vector[src, 0] -= first_time
     
-    for i in range(num_milestones): # column index
-        column_sum = np.sum(count_matrix[:,i])
-        if column_sum > 0.0:
-            avg_time_vector[i, 0] = time_vector[i, 0] / column_sum
-        for j in range(num_milestones):
-            if count_matrix[j,i] > 0.0:
-                avg_time_matrix[j, i] = time_matrix[j, i] / count_matrix[j,i]
-    
-    # TODO: replace above for-loop with functions below
-    #avg_time_vector = make_avg_time_vector(num_milestones, time_vector, count_matrix)
-    #avg_time_matrix = make_avg_time_matrix(num_milestones, time_matrix, count_matrix)
+    return count_matrix, time_vector, time_matrix
+
+def make_avg_milestone_statistics(count_matrix, time_vector, time_matrix):
+    num_milestones = count_matrix.shape[0]
+    avg_time_vector = make_avg_time_vector(
+        num_milestones, time_vector, count_matrix)
+    avg_time_matrix = make_avg_time_matrix(
+        num_milestones, time_matrix, count_matrix)
     
     #avg_time_vector[0, 0] *= 0.5 # times need to be cut in half for end states
     #avg_time_vector_up[0, 0] *= 0.5
     #avg_time_vector_down[0, 0] *= 0.5
-    
-    return count_matrix, time_vector, time_matrix, avg_time_vector, \
-        avg_time_matrix
+    return avg_time_vector, avg_time_matrix
 
 def make_transition_matrix(num_milestones, count_matrix):
     transition_matrix = np.zeros((num_milestones, num_milestones))

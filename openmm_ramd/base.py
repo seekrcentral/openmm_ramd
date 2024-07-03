@@ -149,3 +149,4 @@ def impose_receptor_restraints(system, positions, force_constant, indices):
         
     system.addForce(force)
     return
+    
