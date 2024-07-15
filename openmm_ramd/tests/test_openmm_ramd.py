@@ -60,7 +60,7 @@ def make_openmm_ramd_simulation_object(
         prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
         rec_indices, ramdSteps=ramdSteps, rMinRamd=rMinRamd, 
         forceOutFreq=forceOutFreq, maxDist=maxDist,
-        log_file_name=log_file_name)
+        logFileName=log_file_name)
     
     simulation.context.setPositions(mypdb.positions)
     simulation.context.setPeriodicBoxVectors(*box_vectors)
