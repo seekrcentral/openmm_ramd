@@ -25,7 +25,7 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, max_dist):
     starting_cv_val = None
     for i, trajectory in enumerate(one_dim_trajs):
         for j, frame in enumerate(trajectory):
-            [cv_val, xi_val] = frame
+            [cv_val, xi_val, step] = frame
             if i == 0 and j == 0:
                 starting_cv_val = cv_val
             if cv_val < min_location:
@@ -92,9 +92,13 @@ def dest_milestone_from_cell_transition(new_cell_id, old_cell_id):
     return dest_milestone
 
 def make_milestoning_model(
-        xi_bin_trajs, milestones, frame_time, num_milestones,
-        remove_unbalanced_frame_counts=False, debug_filename=None):
+        xi_bin_traj, milestones, frame_time, num_milestones,
+        remove_unbalanced_frame_counts=False, debug_filename=None,
+        trajectory_stride=1):
     
+    xi_bin_trajs = xi_bin_traj.trajs
+    traj_file_indices = xi_bin_traj.traj_file_indices
+    traj_starting_steps = xi_bin_traj.traj_starting_steps
     frame_time = float(frame_time)
     count_matrix = np.zeros((num_milestones, num_milestones), dtype=np.int32)
     time_vector = np.zeros((num_milestones, 1))
@@ -103,13 +107,15 @@ def make_milestoning_model(
     if debug_filename is not None:
         with open(debug_filename, "a") as f:
             f.write("src, dest, inc_time, cv_val, src_pos, dest_pos, "\
-                    "traj_time\n")
+                    "traj_time, step\n")
     
     for i, traj in enumerate(xi_bin_trajs):
         src_milestone = None
         new_cell_id = None
         src_time = 0.0
         traj_time = 0.0
+        traj_file_index = traj_file_indices[i]
+        traj_starting_step = traj_starting_steps[i]
         
         # Here, I need to skip the counts and times the first time any state
         #  is visited within a trajectory.
@@ -117,12 +123,15 @@ def make_milestoning_model(
         first_transition = -np.ones(num_milestones)
         first_milestone = None
         for j, frame in enumerate(traj):
-            [cv_val, xi_val] = frame
+            [cv_val, xi_val, traj_step] = frame
+            step = traj_step + traj_starting_step
             if j == 0:
                 xi_val0 = xi_val
                 if debug_filename is not None:
                     with open(debug_filename, "a") as f:
-                        f.write(f"Force change to xi: {xi_val:.3f}\n")
+                        f.write(f"Force change to xi: {xi_val:.3f}, "\
+                                f"log file name: {traj_file_index}, "\
+                                f"step: {step//trajectory_stride}\n")
                     
             assert xi_val == xi_val0, "Xi value changes during simulation. "\
                 "Trajectory: {i}, Frame: {j}"
@@ -157,7 +166,8 @@ def make_milestoning_model(
                                         f"{src_time:.3f}, {cv_val:.3f}, "\
                                         f"{milestones[src_milestone]:.3f}, "\
                                         f"{milestones[dest_milestone]:.3f}, "\
-                                        f"{traj_time:.3f}\n")
+                                        f"{traj_time:.3f}, "\
+                                        f"{step//trajectory_stride}\n")
                         
                     src_milestone = dest_milestone
                     src_time = 0.0

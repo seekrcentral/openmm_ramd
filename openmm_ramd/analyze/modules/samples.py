@@ -48,6 +48,8 @@ class Xi_bin_traj():
     def __init__(self, index, num_milestones, milestones, lowest_boundary,
                  midpoint, highest_boundary, situation):
         self.trajs = []
+        self.traj_file_indices = []
+        self.traj_starting_steps = []
         self.index = index
         self.num_milestones = num_milestones
         self.milestones = milestones

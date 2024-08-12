@@ -49,6 +49,9 @@ def parse_ramd_log_file(ramd_log_filename):
     assert os.path.exists(ramd_log_filename), \
         f"File not found: {ramd_log_filename}."
     trajectories = []
+    trajectories_file_indices = []
+    starting_step = 0
+    trajectories_starting_steps = []
     trajectory = []
     n_frames = 0
     relative_COM_x = None
@@ -208,6 +211,9 @@ def parse_ramd_log_file(ramd_log_filename):
             if new_trajectory:
                 if len(trajectory) > 0:
                     trajectories.append(trajectory)
+                    trajectories_file_indices.append(ramd_log_filename)
+                    trajectories_starting_steps.append(starting_step)
+                    starting_step = accel_step
                     trajectory = []
                     n_frames = 0
                     
@@ -236,6 +242,9 @@ def parse_ramd_log_file(ramd_log_filename):
                     ligand_COM_z, accel_COM_x, accel_COM_y, accel_COM_z,
                     old_ligand_step, receptor_step, accel_step)
         trajectories.append(trajectory)
+        trajectories_file_indices.append(ramd_log_filename)
+        trajectories_starting_steps.append(starting_step)
+        starting_step = accel_step
         num_simulations += 1
     
     assert forceOutFreq is not None, \
@@ -248,7 +257,8 @@ def parse_ramd_log_file(ramd_log_filename):
         "The variable timeStep was not assigned in the log file."
     
     return trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, \
-        num_simulations, temperature, max_dist, num_exit_events
+        num_simulations, temperature, max_dist, num_exit_events, \
+        trajectories_file_indices, trajectories_starting_steps
 
 def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
     """
@@ -491,7 +501,7 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False,
                     xi_val = (accx*norm_ligx + accy*norm_ligy + accz*norm_ligz)
                 else:
                     raise Exception(f"Method not implemented: {CONDENSE_MODE}")
-            one_dim_traj.append([cv_val, xi_val])
+            one_dim_traj.append([cv_val, xi_val, j])
             
         one_dim_trajs.append(one_dim_traj)
         

@@ -119,7 +119,7 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
                 stride_error_samples=None, skip_error_samples=None, 
                 cut_out_drift=False, image_directory=None, verbose=False,
                 display_xi_bin_plots=False, flatten_beyond_zero_count=True,
-                debug_directory=None):
+                debug_directory=None, trajectory_stride=1):
     if debug_directory is not None:
         if not os.path.exists(debug_directory):
             os.mkdir(debug_directory)
@@ -152,11 +152,13 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
     ramd_log_chunks = parser.make_log_file_chunks(ramd_log_file_list)
     for chunk_index, ramd_log_chunk in enumerate(ramd_log_chunks):
         trajectory_list = []
+        trajectories_file_indices_list = []
+        trajectories_starting_step_list = []
         for ramd_log_filename in ramd_log_chunk:
             trajectories, force_out_freq_, position_print_freq_, forceRAMD_, \
                 time_step_, num_trajectories_, temperature_, max_dist_, \
-                num_exits = parser.parse_ramd_log_file(
-                    ramd_log_filename)
+                num_exits, trajectories_file_indices, trajectories_starting_step\
+                    = parser.parse_ramd_log_file(ramd_log_filename)
             num_total_trajs += num_trajectories_
             num_total_exits += num_exits
             if force_out_freq is None:
@@ -181,6 +183,8 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
                     "RAMD logs contain differing max_dist values."
                 
             trajectory_list += trajectories
+            trajectories_file_indices_list += trajectories_file_indices
+            trajectories_starting_step_list += trajectories_starting_step
         
         beta = 1.0 / (temperature * unit.kelvin \
                       * samples.kB_kcal_per_mol_per_kelvin)
@@ -233,6 +237,10 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
                 if (traj_xi >= xi_bin_traj.lowest_boundary) \
                         and (traj_xi <= xi_bin_traj.highest_boundary):
                     xi_bin_traj.trajs.append(trajectory)
+                    xi_bin_traj.traj_file_indices.append(
+                        trajectories_file_indices_list[i])
+                    xi_bin_traj.traj_starting_steps.append(
+                        trajectories_starting_step_list[i])
                     found_bin = True
                     break
             
@@ -258,9 +266,10 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
                 
             count_matrix_chunk, time_vector_chunk, time_matrix_chunk \
                 = milestoning.make_milestoning_model(
-                    xi_bin_traj.trajs, milestones, frame_time, num_milestones,
+                    xi_bin_traj, milestones, frame_time, num_milestones,
                     remove_unbalanced_frame_counts=cut_out_drift, 
-                    debug_filename=debug_filename)
+                    debug_filename=debug_filename, 
+                    trajectory_stride=trajectory_stride)
             
             xi_bins[i].count_matrix += count_matrix_chunk
             xi_bins[i].time_vector += time_vector_chunk
@@ -469,6 +478,11 @@ if __name__ == "__main__":
         help="Supply a directory to write debug files - milestoning "\
         "statistics, vectors, and matrices. If None is provided, then the "\
         "defaults won't be written. Default: None.")
+    argparser.add_argument(
+        "-T", "--trajectory_stride", dest="trajectory_stride", 
+        default=1, type=int, help="Provide the trajectory stride for RAMD "\
+            "simulations for debug purposes. Doesn't do anything unless "\
+            "-D is provided to indicate debug mode.")
     
     args = argparser.parse_args()
     args = vars(args)
@@ -486,6 +500,7 @@ if __name__ == "__main__":
     convergence = args["convergence"]
     flatten_beyond_zero_count = args["dont_flatten_beyond_zero_count"]
     debug_directory = args["debug_directory"]
+    trajectory_stride = args["trajectory_stride"]
     
     analysis = theta_ramd(
         ramd_log_files, num_milestones, num_angle_bins, toy_mode=toy_mode, 
@@ -495,7 +510,7 @@ if __name__ == "__main__":
         image_directory=image_directory, verbose=verbose, 
         display_xi_bin_plots=display_xi_bin_plots, 
         flatten_beyond_zero_count=flatten_beyond_zero_count,
-        debug_directory=debug_directory)
+        debug_directory=debug_directory, trajectory_stride=trajectory_stride)
     
     analysis.print_results()
     if convergence:
