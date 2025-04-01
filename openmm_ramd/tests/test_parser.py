@@ -61,10 +61,14 @@ def test_parse_ramd_log_file_large(large_linear_logfile_persistent):
     return
 
 def test_condense_trajectories(small_linear_logfile_persistent):
+    norm_avg_vec = np.array([0.0, 0.0, 1.0])
+    norm_avgx = 0.0
+    norm_avgy = 0.0
+    norm_avgz = 1.0
     [trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, 
      num_simulations, temperature, maxDist] = small_linear_logfile_persistent
-    one_dim_trajs = parser.condense_trajectories(trajectories, maxDist, 
-                                                 onlyZ=True)
+    one_dim_trajs = parser.condense_trajectories(
+        trajectories, maxDist, norm_avg_vec, norm_avgx, norm_avgy, norm_avgz)
     for trajectory, one_dim_traj in zip(trajectories, one_dim_trajs):
         for frame, one_dim_frame in zip(trajectory, one_dim_traj):
             assert frame[2] == one_dim_frame[0]
@@ -103,3 +107,4 @@ def test_escaped_successfully():
     assert parser.escaped_successfully(test_ran_outta_time) == False
     assert parser.escaped_successfully(test_small_log) == False
     assert parser.escaped_successfully(test_small_log_end) == True
+    

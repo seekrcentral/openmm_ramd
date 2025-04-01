@@ -10,6 +10,7 @@ according to theta-RAMD theory.
 
 import os
 import glob
+import shutil
 import argparse
 
 import numpy as np
@@ -21,7 +22,10 @@ import openmm_ramd.analyze.modules.samples as samples
 import openmm_ramd.analyze.modules.milestoning as milestoning
 
 A_per_nm = 10.0
-NUM_CONVERGENCE_INTERVALS = 20
+CONV_PRINT_UPDATE_INTERVAL = 5
+SEEK_FROM_END_SIZE = 1000000
+STRIDE_TO_FIND_CV = 10
+CONVERGE_NUM_ERROR_SAMPLES = 0 # 10?
 
 class InsufficientTrajectoriesError(Exception):
     pass
@@ -86,46 +90,88 @@ def make_xi_bin_plots(milestones, xi_bins, image_directory=None):
     plt.close()
     return
 
-# TODO: Remove? This function was merely to confirm that real systems
-#  rarely transfer to non-adjacent milestones, which, at least for host-
-#  guest, they don't seem to do often, even for as many as 50 milestones
-def make_matrix_bar_plot(matrix, image_directory=None, name="matrix.png"):
-    fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')
+def analyze_traj_set(
+        xi_bins, starting_index, num_milestones, milestones, h, situation, 
+        bulk_milestones, beta, unitless_beta, forceRAMD, num_error_samples, 
+        flatten_beyond_zero_count, stride_error_samples, skip_error_samples, 
+        verbose=False, debug_directory=None):
+    # Combine stats into Xi_bins
+    for i, xi_bin in enumerate(xi_bins):
+        count_matrix = xi_bin.count_matrix
+        time_vector = xi_bin.time_vector
+        time_matrix = xi_bin.time_matrix
+        avg_time_vector, avg_time_matrix\
+            = milestoning.make_avg_milestone_statistics(
+                count_matrix, time_vector, time_matrix)
+        if debug_directory is not None:
+            count_matrix_filename = os.path.join(
+                debug_directory, f"count_matrix_{i}.txt")
+            np.savetxt(count_matrix_filename, count_matrix, fmt="%4d")
+            time_vector_filename = os.path.join(
+                debug_directory, f"time_vector_{i}.txt")
+            np.savetxt(time_vector_filename, time_vector, fmt="%.3e")
+            avg_time_vector_filename = os.path.join(
+                debug_directory, f"avg_time_vector_{i}.txt")
+            np.savetxt(avg_time_vector_filename, avg_time_vector, fmt="%.3e")
+            time_matrix_filename = os.path.join(
+                debug_directory, f"time_matrix_{i}.txt")
+            np.savetxt(time_matrix_filename, time_matrix, fmt="%.3e")
+        
+        if verbose:
+            print(f"count_matrix {i}:")
+            print(count_matrix)
+            print(f"time_vector {i}:")
+            print(time_vector)
+        
+        xi_bin.assign_main_data_sample(
+            count_matrix, time_vector, avg_time_vector, avg_time_matrix)
+        xi_bin.make_profiles(starting_index, wrap_sink=False, 
+                                     unitless_beta=unitless_beta)
+        xi_bin.unslant_data_samples(forceRAMD, beta)
+        xi_bin.counts = milestoning.compute_counts(count_matrix, num_milestones)
+        xi_bin.make_profiles(starting_index, wrap_sink=False, 
+                             unitless_beta=unitless_beta, 
+                             data_sample=xi_bin.main_data_sample_unslanted)
+        if debug_directory is not None:
+            counts_vector_filename = os.path.join(
+                debug_directory, f"counts_{i}.txt")
+            np.savetxt(counts_vector_filename, xi_bin.counts, fmt="%d")
+            unslanted_energy_profile_filename = os.path.join(
+                debug_directory, f"unslanted_free_energy_{i}.txt")
+            np.savetxt(unslanted_energy_profile_filename, 
+                       xi_bin.main_data_sample_unslanted.free_energy_profile,
+                       fmt="%.3e")
+        
+    analysis = samples.Analysis(num_milestones, milestones, h, situation, 
+                                bulk_milestones, verbose, debug_directory)
+    analysis.avg_unslanted_xi_bins(xi_bins)
+    if flatten_beyond_zero_count:
+        analysis.estimate_matrix_beyond_zero_count(starting_index)
     
-    m, n = matrix.shape
-    
-    for i in range(m):
-        xs = np.arange(n)
-        ys = matrix[:,i]
-        # Plot the bar graph given by xs and ys on the plane y=k with 80% opacity.
-        ax.bar(xs, ys, zs=i, zdir='y', alpha=0.8)
-    
-    ax.set_xlabel("Destination")
-    ax.set_ylabel("Source")
-    ax.set_zlabel("Value")
-    ax.set_title("Matrix transition probabilities")
-    
-    if image_directory is None:
-        plt.show()
-    else:
-        plt.savefig(os.path.join(image_directory, name))
-    
-    plt.close(fig)
-    return
+    if num_error_samples > 0:
+        analysis.sample_error_matrices(
+            num_error_samples, stride_error_samples, skip_error_samples)
+    analysis.make_profiles(starting_index, wrap_sink=False, 
+                           unitless_beta=unitless_beta)
+    analysis.make_times(starting_index)
+    return analysis
 
 def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10, 
                 toy_mode=False, num_error_samples=100, 
                 stride_error_samples=None, skip_error_samples=None, 
                 cut_out_drift=False, image_directory=None, verbose=False,
                 display_xi_bin_plots=False, flatten_beyond_zero_count=True,
-                debug_directory=None, trajectory_stride=1):
+                debug_directory=None, trajectory_stride=1, convergence=False):
     if debug_directory is not None:
         if not os.path.exists(debug_directory):
             os.mkdir(debug_directory)
         else:
             for filename in os.listdir(debug_directory):
-                os.remove(os.path.join(debug_directory, filename))
+                full_path = os.path.join(debug_directory, filename)
+                if os.path.isdir(full_path):
+                    shutil.rmtree(full_path)
+                else:
+                    os.remove(full_path)
         
     if verbose:
         print(f"Using {num_milestones} milestones.")
@@ -146,10 +192,46 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
     time_vector = None
     time_matrix = None
     xi_bins = None
+    converge_list = []
     if verbose:
         print("Now loading log files...")
     
-    ramd_log_chunks = parser.make_log_file_chunks(ramd_log_file_list)
+    print("about to read settings")
+    # Read settings here first
+    _, force_out_freq, position_print_freq, forceRAMD, time_step, _, \
+        temperature, max_dist, _, _, _ \
+                = parser.parse_ramd_log_file(ramd_log_file_list[0], 
+                                             read_only_settings=True)
+    print("settings read")
+    # Read enough of the last frames just to get the CV
+    if toy_mode:
+        norm_avgx = 0.0
+        norm_avgy = 0.0
+        norm_avgz = 1.0
+        norm_avg_vec = np.array([0.0, 0.0, 1.0])
+        
+    else:
+        # First, parse the last few frames of each log file to determine the CV
+        end_traj_list = []
+        for ramd_log_filename in ramd_log_file_list:
+            end_trajs, force_out_freq_, position_print_freq_, forceRAMD_, \
+                time_step_, num_trajectories_, temperature_, max_dist_, \
+                num_exits, trajectories_file_indices, trajectories_starting_step\
+                    = parser.parse_ramd_log_file(
+                        ramd_log_filename, stride=STRIDE_TO_FIND_CV,
+                        skip_checks=True)
+            end_traj_list += end_trajs
+        
+        #norm_avg_vec, norm_avgx, norm_avgy, norm_avgz \
+        #    = parser.find_prin_comp_cv(
+        #        end_traj_list, max_dist, debug_directory=None)
+        norm_avg_vec, norm_avgx, norm_avgy, norm_avgz \
+            = parser.get_cv_vec_traj_shells(end_traj_list)
+    
+    print("CV chosen: ", norm_avg_vec)
+    
+    # Read the full data
+    ramd_log_chunks, num_chunks = parser.make_log_file_chunks(ramd_log_file_list)
     for chunk_index, ramd_log_chunk in enumerate(ramd_log_chunks):
         trajectory_list = []
         trajectories_file_indices_list = []
@@ -192,8 +274,8 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
         # Each trajectory represents a set of frames between force changes
         # Align the trajectories and convert to 1D, and xi values
         one_dim_trajs = parser.condense_trajectories(
-            trajectory_list, max_dist, onlyZ=toy_mode, 
-            debug_directory=debug_directory)
+            trajectory_list, max_dist, norm_avg_vec, norm_avgx, norm_avgy, 
+            norm_avgz)
         
         #Construct a milestoning model based on trajectory fragments
         if milestones is None:
@@ -252,7 +334,7 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
         for i, xi_bin_traj in enumerate(xi_bin_trajs):
             if verbose:
                 print(f"num trajectories in bin {i}: {len(xi_bin_traj.trajs)}")
-            if len(xi_bin_traj.trajs) == 0 and len(ramd_log_chunks) == 1:
+            if len(xi_bin_traj.trajs) == 0 and num_chunks == 1:
                 print("All angle bins need trajectories. Either run more "\
                       "simulations or decrease the number of angle bins.")
                 raise InsufficientTrajectoriesError
@@ -275,53 +357,33 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
             xi_bins[i].time_vector += time_vector_chunk
             xi_bins[i].time_matrix += time_matrix_chunk
             
-    # Combine stats into Xi_bins
-    for i, xi_bin in enumerate(xi_bins):
-        count_matrix = xi_bin.count_matrix
-        time_vector = xi_bin.time_vector
-        time_matrix = xi_bin.time_matrix
-        avg_time_vector, avg_time_matrix\
-            = milestoning.make_avg_milestone_statistics(
-                count_matrix, time_vector, time_matrix)
-        if debug_directory is not None:
-            count_matrix_filename = os.path.join(
-                debug_directory, f"count_matrix_{i}.txt")
-            np.savetxt(count_matrix_filename, count_matrix, fmt="%4d")
-            time_vector_filename = os.path.join(
-                debug_directory, f"time_vector_{i}.txt")
-            np.savetxt(time_vector_filename, time_vector, fmt="%.3e")
-            avg_time_vector_filename = os.path.join(
-                debug_directory, f"avg_time_vector_{i}.txt")
-            np.savetxt(avg_time_vector_filename, avg_time_vector, fmt="%.3e")
-            time_matrix_filename = os.path.join(
-                debug_directory, f"time_matrix_{i}.txt")
-            np.savetxt(time_matrix_filename, time_matrix, fmt="%.3e")
-        
-        if verbose:
-            print(f"count_matrix {i}:")
-            print(count_matrix)
-            print(f"time_vector {i}:")
-            print(time_vector)
-        
-        xi_bin.assign_main_data_sample(
-            count_matrix, time_vector, avg_time_vector, avg_time_matrix)
-        xi_bin.make_profiles(starting_index, wrap_sink=False, 
-                                     unitless_beta=unitless_beta)
-        xi_bin.unslant_data_samples(forceRAMD, beta)
-        xi_bin.counts = milestoning.compute_counts(count_matrix, num_milestones)
-        xi_bin.make_profiles(starting_index, wrap_sink=False, 
-                             unitless_beta=unitless_beta, 
-                             data_sample=xi_bin.main_data_sample_unslanted)
-        if debug_directory is not None:
-            counts_vector_filename = os.path.join(
-                debug_directory, f"counts_{i}.txt")
-            np.savetxt(counts_vector_filename, xi_bin.counts, fmt="%d")
-            unslanted_energy_profile_filename = os.path.join(
-                debug_directory, f"unslanted_free_energy_{i}.txt")
-            np.savetxt(unslanted_energy_profile_filename, 
-                       xi_bin.main_data_sample_unslanted.free_energy_profile,
-                       fmt="%.3e")
+        if convergence:
+            if debug_directory is None:
+                debug_directory_for_conv = None
+            else:
+                debug_directory_for_conv_base = os.path.join(debug_directory, 
+                                                             "converge")
+                if not os.path.exists(debug_directory_for_conv_base):
+                    os.mkdir(debug_directory_for_conv_base)
+                debug_directory_for_conv = os.path.join(
+                    debug_directory_for_conv_base, f"frame_{chunk_index}")
+                if not os.path.exists(debug_directory_for_conv):
+                    os.mkdir(debug_directory_for_conv)
+            analyze_for_conv = analyze_traj_set(
+                xi_bins, starting_index, num_milestones, milestones, h, 
+                situation, bulk_milestones, beta, unitless_beta, forceRAMD, 
+                CONVERGE_NUM_ERROR_SAMPLES, flatten_beyond_zero_count, 
+                stride_error_samples, skip_error_samples, verbose=False, 
+                debug_directory=debug_directory_for_conv)
+            if debug_directory is not None:
+                analyze_for_conv.create_plots(debug_directory_for_conv)
+                make_xi_bin_plots(milestones, xi_bins, debug_directory_for_conv)
+                
+            converge_list.append(analyze_for_conv)
     
+    print("log files read and milestoning models chosen")
+
+    # Finished reading all log files
     if verbose:
         print("Number of trajectories extracted from log file(s):", 
               num_total_trajs)
@@ -335,43 +397,31 @@ def theta_ramd(ramd_log_file_list, num_milestones=20, num_angle_bins=10,
         
     print(f"{num_total_exits} exited successfully of "\
           f"{num_total_log_files} log files.")
-    
+    analysis = analyze_traj_set(
+        xi_bins, starting_index, num_milestones, milestones, h, situation, 
+        bulk_milestones, beta, unitless_beta, forceRAMD, num_error_samples, 
+        flatten_beyond_zero_count, stride_error_samples, skip_error_samples, 
+        verbose=verbose, debug_directory=debug_directory)
     if display_xi_bin_plots:
         make_xi_bin_plots(milestones, xi_bins, image_directory)
-        
-    analysis = samples.Analysis(num_milestones, milestones, h, situation, 
-                                bulk_milestones, verbose, debug_directory)
-    analysis.avg_unslanted_xi_bins(xi_bins)
-    if flatten_beyond_zero_count:
-        analysis.estimate_matrix_beyond_zero_count(starting_index)
-    
-    if num_error_samples > 0:
-        analysis.sample_error_matrices(
-            num_error_samples, stride_error_samples, skip_error_samples)
-    analysis.make_profiles(starting_index, wrap_sink=False, 
-                           unitless_beta=unitless_beta)
-    analysis.make_times(starting_index)
-    return analysis
+    print("analysis completed")
+    return analysis, converge_list
 
-def converge(ramd_log_files, num_intervals, num_milestones, num_angle_bins, 
+def converge(converge_list, num_milestones, num_angle_bins, 
              image_directory=None, toy_mode=False):
-    total_num_log_files = len(ramd_log_files)
-    ending_indices = np.linspace(0, total_num_log_files, num_intervals+1, 
-                                 dtype=int)
+    num_intervals = len(converge_list)
+    num_log_files = num_intervals * CONV_PRINT_UPDATE_INTERVAL
     residence_times = np.zeros((num_intervals+1))
     residence_times_err = np.zeros((num_intervals+1))
-    for i, ending_index in enumerate(ending_indices):
-        print("Now analyzing convergence interval:", i, "of", num_intervals, 
-              "-", ending_index, "log files.")
-        ramd_log_file_subset = ramd_log_files[:ending_index]
-        if len(ramd_log_file_subset) == 0:
-            continue
+    log_indices = np.zeros((num_intervals+1))
+    for i, conv_analysis in enumerate(converge_list):
+        interval_num = i * CONV_PRINT_UPDATE_INTERVAL
+        print("Now analyzing convergence interval:", interval_num, "of", 
+               num_log_files, "log files.")
+        log_indices[i] = i
         try:
-            theta_analysis = theta_ramd(
-                ramd_log_file_subset, num_milestones, num_angle_bins, 
-                toy_mode=toy_mode)
-            residence_times[i] = theta_analysis.MFPT
-            residence_times_err[i] = theta_analysis.MFPT_error
+            residence_times[i] = conv_analysis.MFPT
+            residence_times_err[i] = conv_analysis.MFPT_error
         except InsufficientTrajectoriesError:
             residence_times[i] = np.NAN
             continue
@@ -382,7 +432,7 @@ def converge(ramd_log_files, num_intervals, num_milestones, num_angle_bins,
     
     fig, ax = plt.subplots()
     
-    ax.errorbar(ending_indices, residence_times, yerr=residence_times_err,
+    ax.errorbar(log_indices, residence_times, yerr=residence_times_err,
             linestyle="-", marker="o", markersize=2, capsize=2, color="k", 
             ecolor="k")
     # get finite min and max values
@@ -502,7 +552,7 @@ if __name__ == "__main__":
     debug_directory = args["debug_directory"]
     trajectory_stride = args["trajectory_stride"]
     
-    analysis = theta_ramd(
+    analysis, converge_list = theta_ramd(
         ramd_log_files, num_milestones, num_angle_bins, toy_mode=toy_mode, 
         num_error_samples=num_error_samples, 
         stride_error_samples=stride_error_samples, 
@@ -510,13 +560,13 @@ if __name__ == "__main__":
         image_directory=image_directory, verbose=verbose, 
         display_xi_bin_plots=display_xi_bin_plots, 
         flatten_beyond_zero_count=flatten_beyond_zero_count,
-        debug_directory=debug_directory, trajectory_stride=trajectory_stride)
+        debug_directory=debug_directory, trajectory_stride=trajectory_stride,
+        convergence=convergence)
     
     analysis.print_results()
     if convergence:
-        converge(ramd_log_files, num_intervals=NUM_CONVERGENCE_INTERVALS, 
-                 num_milestones=num_milestones, num_angle_bins=num_angle_bins, 
-                 image_directory=image_directory, toy_mode=toy_mode)
+        converge(converge_list, num_milestones=num_milestones, 
+                 num_angle_bins=num_angle_bins, image_directory=image_directory,
+                 toy_mode=toy_mode)
         
     analysis.create_plots(image_directory)
-    #make_matrix_bar_plot(analysis.main_data_sample.K)

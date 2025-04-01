@@ -287,12 +287,15 @@ class Analysis:
     def estimate_matrix_beyond_zero_count(self, starting_index):
         found_zero_count = False
         rate_estimate = FAST_RATE
+        print("situation:", self.situation)
+        print("starting_index:", starting_index)
         if (self.situation == 1) or (self.situation == 3):
             for i in range(starting_index, self.num_milestones):
-                if self.counts_sum[i] < 1:
+                if (self.counts_sum[i] < 1) and (i > starting_index):
                     found_zero_count = True
                     rate_estimate = np.sum(self.main_data_sample.Q[:,i])
                     
+                print("i:", i, "self.counts_sum[i]:", self.counts_sum[i], "found_zero_count:", found_zero_count)
                 if found_zero_count:
                     if i == 0:
                         self.main_data_sample.K[i+1,i] = 1.0
@@ -315,7 +318,7 @@ class Analysis:
         rate_estimate = FAST_RATE
         if (self.situation == 2) or (self.situation == 3):
             for i in range(starting_index, -1, -1):
-                if self.counts_sum[i] == 0:
+                if (self.counts_sum[i] < 1) and (i < starting_index):
                     found_zero_count = True
                     rate_estimate = np.sum(self.main_data_sample.Q[:,i])
                     
@@ -345,6 +348,9 @@ class Analysis:
             np.savetxt(Q_flat_filename, self.main_data_sample.Q, fmt="%.3e")
             K_flat_filename = os.path.join(self.debug_directory, "K_flat.txt")
             np.savetxt(K_flat_filename, self.main_data_sample.K, fmt="%.3e")
+            situation_filename = os.path.join(self.debug_directory, "situation.txt")
+            with open(situation_filename, "w") as f:
+                f.write(f"Situation: {self.situation}\n")
         
         return
     
@@ -370,6 +376,20 @@ class Analysis:
         self.diffusion_profile = milestoning.compute_diffusion_coefficients(
             self.main_data_sample.Q, self.main_data_sample.K, 
             self.free_energy_profile, self.milestones, unitless_beta)
+        
+        if self.debug_directory is not None:
+            p_i_vector_filename = os.path.join(
+                self.debug_directory, f"p_i_all.txt")
+            np.savetxt(p_i_vector_filename, self.p_i, fmt="%.3e")
+            free_energy_vector_filename = os.path.join(
+                self.debug_directory, f"free_energy_all.txt")
+            np.savetxt(free_energy_vector_filename, 
+                       self.free_energy_profile, fmt="%.3e")
+            diffusion_vector_filename = os.path.join(
+                self.debug_directory, f"diffusion_all.txt")
+            np.savetxt(diffusion_vector_filename, self.diffusion_profile,
+                       fmt="%.3e")
+        
         p_i_list = []
         free_energy_profile_list = []
         diffusion_profile_list = []

@@ -63,6 +63,7 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, max_dist):
         min_max_distance = 2.0 * outer_edge
         start_point_index = int((starting_cv_val + outer_edge) * (num_milestones - 1) / min_max_distance)
     
+    
     num_points_after = num_milestones - start_point_index - 1
     num_points_before = num_milestones - num_points_after - 1
     if situation == 1:
@@ -78,6 +79,19 @@ def uniform_milestone_locations(one_dim_trajs, num_milestones, max_dist):
     for i in range(num_milestones):
         milestone = first_milestone_location + h*i
         milestones.append(milestone)
+    
+    # DEBUG
+    print("min_location:", min_location)
+    print("max_location:", max_location)
+    print("situation:", situation)
+    print("min_max_distance:", min_max_distance)
+    print("start_point_index:", start_point_index)
+    print("num_points_before:", num_points_before)
+    print("num_points_after:", num_points_after)
+    print("outer_edge:", outer_edge)
+    print("h:", h)
+    print("first_milestone_location:", first_milestone_location)
+    
     
     return milestones, min_location, max_location, starting_cv_val, \
         start_point_index, h, situation

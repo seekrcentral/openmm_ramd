@@ -7,18 +7,34 @@ CVs.
 
 import re
 import os
+from collections import defaultdict
 
 import numpy as np
-LOG_FILE_CHUNK_SIZE = 100
+# BEWARE settings this number to 1 - too few trajectories can cause the
+# uniform milestone finder to miss sampled locations and assign
+# wrong min or max values of the milestones.
+# TODO: consider parsing trajectories to find best milestone placements,
+# then parse again to extract statistics
 
+LOG_FILE_CHUNK_SIZE = 5
+STD_MAX = 10.0
+
+# TODO: marked for removal, but save in a reference file somewhere
 def make_log_file_chunks(ramd_log_files):
     """
     Divide the selection of RAMD log files into 'chunks', so that the
     entire collection doesn't need to be processed at once, but can
     be broken down into more manageable pieces.
     """
-    return (ramd_log_files[i:i+LOG_FILE_CHUNK_SIZE] for i in range(
-        0, len(ramd_log_files), LOG_FILE_CHUNK_SIZE))
+    num_chunks = 0
+    ramd_log_file_chunks = []
+    for i in range(0, len(ramd_log_files), LOG_FILE_CHUNK_SIZE):
+        ramd_log_file_chunks.append(ramd_log_files[i:i+LOG_FILE_CHUNK_SIZE])
+        num_chunks += 1
+        
+    return ramd_log_file_chunks, num_chunks
+    # return [ramd_log_files[i:i+LOG_FILE_CHUNK_SIZE] for i in range(
+    #    0, len(ramd_log_files), LOG_FILE_CHUNK_SIZE)]
 
 def add_new_frame(trajectory, n_frames, relative_COM_x, relative_COM_y, 
                   relative_COM_z, old_ligand_COM_x, old_ligand_COM_y, 
@@ -45,7 +61,9 @@ def add_new_frame(trajectory, n_frames, relative_COM_x, relative_COM_y,
     n_frames += 1
     return n_frames
 
-def parse_ramd_log_file(ramd_log_filename):
+def parse_ramd_log_file(ramd_log_filename, seek_from_end=None, 
+                        skip_checks=False, read_only_settings=False,
+                        stride=1):
     assert os.path.exists(ramd_log_filename), \
         f"File not found: {ramd_log_filename}."
     trajectories = []
@@ -53,7 +71,10 @@ def parse_ramd_log_file(ramd_log_filename):
     starting_step = 0
     trajectories_starting_steps = []
     trajectory = []
+    # number of frames in the current trajectory
     n_frames = 0
+    # number of frames total among all trajectories
+    n_total_frames = 0
     relative_COM_x = None
     relative_COM_y = None
     relative_COM_z = None
@@ -162,8 +183,12 @@ def parse_ramd_log_file(ramd_log_filename):
                     max_dist = max_dist_
             
             # Find the lines that indicate the ligand COM
-            lig_com_search = re.match("RAMD FORCE: (\d+) > LIGAND COM IS: \[ *([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) *\]", line)
+            #lig_com_search = re.match("RAMD FORCE: (\d+) > LIGAND COM IS: \[ *([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) *\]", line)
+            lig_com_search = re.match("RAMD FORCE: (\d+) > LIGAND COM IS: \[ *([+-]?\d+\.\d*(?:[eE][+-]?\d*)?) +([+-]?\d+\.\d*(?:[eE][+-]?\d*)?) +([+-]?\d+\.\d*(?:[eE][+-]?\d*)?) *\]", line)
             if lig_com_search:
+                if read_only_settings:
+                    break
+                
                 old_ligand_step = ligand_step
                 ligand_step = int(lig_com_search.group(1))
                 old_ligand_COM_x = ligand_COM_x
@@ -173,8 +198,15 @@ def parse_ramd_log_file(ramd_log_filename):
                 ligand_COM_y = float(lig_com_search.group(3))
                 ligand_COM_z = float(lig_com_search.group(4))
                 new_trajectory_frame = True
+
+                if seek_from_end is not None:
+                    # seek for spot near end of file and iterate lines after that one
+                    f.seek(-seek_from_end, 2)
+                    #print("f.readline():", f.readline())
+                    seek_from_end = None
             
-            rec_com_search = re.match("RAMD FORCE: (\d+) > PROTEIN COM IS: \[ *([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) *\]", line)
+            #rec_com_search = re.match("RAMD FORCE: (\d+) > PROTEIN COM IS: \[ *([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) *\]", line)
+            rec_com_search = re.match("RAMD FORCE: (\d+) > PROTEIN COM IS: \[ *([+-]?\d+\.\d*(?:[eE][+-]?\d*)?) +([+-]?\d+\.\d*(?:[eE][+-]?\d*)?) +([+-]?\d+\.\d*(?:[eE][+-]?\d*)?) *\]", line)
             if rec_com_search:
                 receptor_step = int(rec_com_search.group(1))
                 receptor_COM_x = float(rec_com_search.group(2))
@@ -185,7 +217,8 @@ def parse_ramd_log_file(ramd_log_filename):
                 relative_COM_z = ligand_COM_z - receptor_COM_z
                 continue
             
-            accel_search = re.match("RAMD: (\d+)    >>> KEEP PREVIOUS ACCELERATION DIRECTION: *\[ *([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) *\]", line)
+            #accel_search = re.match("RAMD: (\d+)    >>> KEEP PREVIOUS ACCELERATION DIRECTION: *\[ *([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) *\]", line)
+            accel_search = re.match("RAMD: (\d+)    >>> KEEP PREVIOUS ACCELERATION DIRECTION: *\[ *([+-]?\d+\.\d*(?:[eE][+-]?\d*)?) +([+-]?\d+\.\d*(?:[eE][+-]?\d*)?) +([+-]?\d+\.\d*(?:[eE][+-]?\d*)?) *\]", line)
             if accel_search:
                 accel_step = int(accel_search.group(1))
                 accel_COM_x = float(accel_search.group(2))
@@ -193,7 +226,8 @@ def parse_ramd_log_file(ramd_log_filename):
                 accel_COM_z = float(accel_search.group(4))
                 continue
             
-            change_accel_search = re.match("RAMD: (\d+)    >>> CHANGE ACCELERATION DIRECTION TO: *\[ *([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) *\]", line)
+            #change_accel_search = re.match("RAMD: (\d+)    >>> CHANGE ACCELERATION DIRECTION TO: *\[ *([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) +([+-]?\d+\.\d*[eE]?[+-]?\d*) *\]", line)
+            change_accel_search = re.match("RAMD: (\d+)    >>> CHANGE ACCELERATION DIRECTION TO: *\[ *([+-]?\d+\.\d*(?:[eE][+-]?\d*)?) +([+-]?\d+\.\d*(?:[eE][+-]?\d*)?) +([+-]?\d+\.\d*(?:[eE][+-]?\d*)?) *\]", line)
             if change_accel_search:
                 accel_step = int(change_accel_search.group(1))
                 accel_COM_x = float(change_accel_search.group(2))
@@ -221,11 +255,19 @@ def parse_ramd_log_file(ramd_log_filename):
                 if n_frames > 0:
                     assert old_ligand_COM_x is not None, \
                         f"Error near file: {ramd_log_filename}, line: {i}"
-                n_frames = add_new_frame(
-                    trajectory, n_frames, relative_COM_x, relative_COM_y, 
-                    relative_COM_z, old_ligand_COM_x, old_ligand_COM_y, 
-                    old_ligand_COM_z, accel_COM_x, accel_COM_y, accel_COM_z,
-                    old_ligand_step, receptor_step, accel_step)
+                adding_frame = True
+                if stride > 1:
+                    if n_total_frames % stride != 0:
+                        adding_frame = False
+                    
+                if adding_frame:
+                    n_frames = add_new_frame(
+                        trajectory, n_frames, relative_COM_x, relative_COM_y, 
+                        relative_COM_z, old_ligand_COM_x, old_ligand_COM_y, 
+                        old_ligand_COM_z, accel_COM_x, accel_COM_y, accel_COM_z,
+                        old_ligand_step, receptor_step, accel_step)
+                
+                n_total_frames += 1
                 
         if n_frames > 0:
             accel_step = old_ligand_step
@@ -241,20 +283,25 @@ def parse_ramd_log_file(ramd_log_filename):
                     relative_COM_z, ligand_COM_x, ligand_COM_y, 
                     ligand_COM_z, accel_COM_x, accel_COM_y, accel_COM_z,
                     old_ligand_step, receptor_step, accel_step)
+        
+        n_total_frames += 1
+
         trajectories.append(trajectory)
         trajectories_file_indices.append(ramd_log_filename)
         trajectories_starting_steps.append(starting_step)
         starting_step = accel_step
         num_simulations += 1
     
-    assert forceOutFreq is not None, \
-        "The variable forceOutFreq was not assigned in the log file."
+    if not skip_checks:
+        assert forceOutFreq is not None, \
+            "The variable forceOutFreq was not assigned in the log file."
+        assert forceRAMD is not None, \
+            "The variable forceRAMD was not assigned in the log file."
+        assert timeStep is not None, \
+            "The variable timeStep was not assigned in the log file."
+        
     if positionPrintFreq is None:
         positionPrintFreq = forceOutFreq
-    assert forceRAMD is not None, \
-        "The variable forceRAMD was not assigned in the log file."
-    assert timeStep is not None, \
-        "The variable timeStep was not assigned in the log file."
     
     return trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, \
         num_simulations, temperature, max_dist, num_exit_events, \
@@ -361,7 +408,77 @@ def get_cv_vec_traj_avg(trajectories):
     norm_avgy = avg_ligy / avg_lig_length
     norm_avgz = avg_ligz / avg_lig_length
     norm_avg_vec = np.array([norm_avgx, norm_avgy, norm_avgz])
-    return norm_avg_vec
+    return norm_avg_vec, norm_avgx, norm_avgy, norm_avgz
+
+def get_cv_vec_traj_shells(trajectories):
+    """
+    Divide the trajectories into 'shells', that is, average positions
+    within certain shells of distance
+    """
+    position_sum_arrays = defaultdict(lambda: np.zeros(3))
+    position_counts = defaultdict(int)
+    #print("len(trajectories):", len(trajectories))
+    for i, trajectory in enumerate(trajectories):
+        #print(f"len(trajectory) {i}:", len(trajectory))
+        for j, frame in enumerate(trajectory):
+            [ligx, ligy, ligz, accx, accy, accz] = frame
+            lig_length = np.sqrt(ligx**2 + ligy**2 + ligz**2)
+            shell = int(lig_length)
+            position_sum_arrays[shell] += np.array([ligx, ligy, ligz])
+            position_counts[shell] += 1
+    
+    position_avg_arrays = { k:v/position_counts[k] for k,v in position_sum_arrays.items() }
+    print("position_avg_arrays:", position_avg_arrays)
+    position_sum_sq = defaultdict(float)
+    for i, trajectory in enumerate(trajectories):
+        for j, frame in enumerate(trajectory):
+            [ligx, ligy, ligz, accx, accy, accz] = frame
+            lig_length = np.sqrt(ligx**2 + ligy**2 + ligz**2)
+            shell = int(lig_length)
+            position_sum_diff_from_avg \
+                = (np.array([ligx, ligy, ligz]) - position_avg_arrays[shell])
+            position_sum_sq[shell] += np.dot(position_sum_diff_from_avg, 
+                                             position_sum_diff_from_avg)
+    position_stdev = { k:np.sqrt(v/position_counts[k]) for k,v in position_sum_sq.items() }
+    print("position_stdev:", position_stdev)
+    shell_keys = sorted(list(position_avg_arrays.keys()))
+    shell_keys_small_stdev = [k for k in shell_keys if position_stdev[k] < STD_MAX]
+    print("shell_keys_small_stdev:", shell_keys_small_stdev)
+    if len(shell_keys_small_stdev) >= 2:
+        #norm_vec = position_avg_arrays[shell_keys_small_stdev[-1]] \
+        #    - position_avg_arrays[shell_keys_small_stdev[0]]
+        #print("position_avg_arrays[shell_keys_small_stdev[0]]:", 
+        #      position_avg_arrays[shell_keys_small_stdev[0]])
+        data_matrix = np.zeros((3,len(shell_keys_small_stdev)))
+        for i, shell in enumerate(shell_keys_small_stdev):
+            data_matrix[:,i] = position_avg_arrays[shell]
+        data_matrix_avg = np.mean(data_matrix, axis=1)
+        data_matrix -= data_matrix_avg[:, np.newaxis]
+        cov = np.cov(data_matrix)
+        eig_val, eig_vec = np.linalg.eig(cov)
+        # Sort the e-vals and find e-vec with highest e-val
+        indices = np.arange(0, len(eig_val), 1)
+        indices = ([x for _, x in sorted(zip(eig_val, indices))])[::-1]
+        eig_val = eig_val[indices]
+        eig_vec = eig_vec[:,indices]
+        norm_vec = np.zeros(3)
+        mean_vec = position_avg_arrays[shell_keys_small_stdev[-1]] \
+            - position_avg_arrays[shell_keys_small_stdev[0]]
+        if np.dot(eig_vec[:,0], mean_vec) > 0.0:
+            norm_vec[0] = eig_vec[0,0]
+            norm_vec[1] = eig_vec[1,0]
+            norm_vec[2] = eig_vec[2,0]
+        else:
+            norm_vec[0] = -eig_vec[0,0]
+            norm_vec[1] = -eig_vec[1,0]
+            norm_vec[2] = -eig_vec[2,0]
+
+    elif len(shell_keys_small_stdev) == 1:
+        norm_vec = position_avg_arrays[shell_keys_small_stdev[0]]
+    else:
+        raise ValueError("No CV found.")
+    norm_vec = norm_vec / np.linalg.norm(norm_vec)
+    return norm_vec, norm_vec[0], norm_vec[1], norm_vec[2]
 
 def get_mean_vec_for_frames_greater_than_boundary(trajectories, boundary):
     """
@@ -424,8 +541,25 @@ def get_cv_vec_principal_component(trajectories, mean_vec=None):
     
     return norm_avg_vec
 
-def condense_trajectories(trajectories, max_dist, onlyZ=False, 
-                          debug_directory=None):
+def find_prin_comp_cv(trajectories, max_dist, debug_directory=None):
+    boundary = 0.5 * max_dist
+    mean_vec = get_mean_vec_for_frames_greater_than_boundary(
+        trajectories, boundary)
+    norm_avg_vec = get_cv_vec_principal_component(trajectories, mean_vec)
+    norm_avgx = norm_avg_vec[0]
+    norm_avgy = norm_avg_vec[1]
+    norm_avgz = norm_avg_vec[2]
+    if debug_directory is not None:
+        mean_vec_filename = os.path.join(debug_directory, "mean_vec.txt")
+        np.savetxt(mean_vec_filename, mean_vec, fmt="%.3f")
+        norm_avg_vec_filename = os.path.join(
+            debug_directory, "norm_avg_vec.txt")
+        np.savetxt(norm_avg_vec_filename, norm_avg_vec, fmt="%.3f")
+    
+    return norm_avg_vec, norm_avgx, norm_avgy, norm_avgz
+
+def condense_trajectories(trajectories, max_dist, norm_avg_vec, norm_avgx,
+                          norm_avgy, norm_avgz):
     """
     Reduce trajectories to 1D, and compute xi values
     
@@ -442,65 +576,32 @@ def condense_trajectories(trajectories, max_dist, onlyZ=False,
     """
     # First, find the average position of all ligand positions, this will
     # define our 1D CV per trajectory
-    CONDENSE_MODE = "prin_comp" # Can be "prin_comp", "lig_avg" or "lig_vec"
     # The cylinder settings are to avoid counting trajectory frames that have
     #  exited the site and have found their way out and around the edges of the
     #  receptor, which might contaminate lower milestones.
     MUST_BE_WITHIN_CYLINDER = True
     CYLINDER_MAX_RADIUS = 0.5 * max_dist
-    #if len(trajectory) == 0:
-    #    continue
-    if (CONDENSE_MODE == "lig_avg") and not onlyZ:
-        norm_avg_vec = get_cv_vec_traj_avg(trajectories)
-        norm_avgx = norm_avg_vec[0]
-        norm_avgy = norm_avg_vec[1]
-        norm_avgz = norm_avg_vec[2]
-    elif (CONDENSE_MODE == "prin_comp") and not onlyZ:
-        boundary = 0.5 * max_dist
-        mean_vec = get_mean_vec_for_frames_greater_than_boundary(
-            trajectories, boundary)
-        norm_avg_vec = get_cv_vec_principal_component(trajectories, mean_vec)
-        norm_avgx = norm_avg_vec[0]
-        norm_avgy = norm_avg_vec[1]
-        norm_avgz = norm_avg_vec[2]
-        if debug_directory is not None:
-            mean_vec_filename = os.path.join(debug_directory, "mean_vec.txt")
-            np.savetxt(mean_vec_filename, mean_vec, fmt="%.3f")
-            norm_avg_vec_filename = os.path.join(
-                debug_directory, "norm_avg_vec.txt")
-            np.savetxt(norm_avg_vec_filename, norm_avg_vec, fmt="%.3f")
+        
     one_dim_trajs = []
     for i, trajectory in enumerate(trajectories):
         one_dim_traj = []
         for j, frame in enumerate(trajectory):
             [ligx, ligy, ligz, accx, accy, accz] = frame
             # dot product between frame pos and avg_lig
-            if onlyZ:
-                cv_val = ligz
-                xi_val = accz
-            else:
-                if CONDENSE_MODE in ["lig_avg", "prin_comp"]:
-                    cv_val = (ligx*norm_avgx + ligy*norm_avgy + ligz*norm_avgz)
-                    #cv_val = np.sqrt(ligx*ligx + ligy*ligy + ligz*ligz)
-                    # dot product between frame acc and avg_lig
-                    xi_val = (accx*norm_avgx + accy*norm_avgy + accz*norm_avgz)
-                    if MUST_BE_WITHIN_CYLINDER:
-                        lig_vec = np.array([ligx, ligy, ligz])
-                        projection_vec = norm_avg_vec * np.dot(norm_avg_vec, lig_vec)
-                        radial_vec = lig_vec - projection_vec
-                        if np.linalg.norm(radial_vec) > CYLINDER_MAX_RADIUS:
-                            # If the frame goes outside of the encompassing 
-                            # cylinder, then simply end this trajectory
-                            break
+            
+            cv_val = (ligx*norm_avgx + ligy*norm_avgy + ligz*norm_avgz)
+            #cv_val = np.sqrt(ligx*ligx + ligy*ligy + ligz*ligz)
+            # dot product between frame acc and avg_lig
+            xi_val = (accx*norm_avgx + accy*norm_avgy + accz*norm_avgz)
+            if MUST_BE_WITHIN_CYLINDER:
+                lig_vec = np.array([ligx, ligy, ligz])
+                projection_vec = norm_avg_vec * np.dot(norm_avg_vec, lig_vec)
+                radial_vec = lig_vec - projection_vec
+                if np.linalg.norm(radial_vec) > CYLINDER_MAX_RADIUS:
+                    # If the frame goes outside of the encompassing 
+                    # cylinder, then simply end this trajectory
+                    break
                     
-                elif CONDENSE_MODE == "lig_vec":
-                    cv_val = np.sqrt(ligx*ligx + ligy*ligy + ligz*ligz)
-                    norm_ligx = ligx / cv_val
-                    norm_ligy = ligy / cv_val
-                    norm_ligz = ligz / cv_val
-                    xi_val = (accx*norm_ligx + accy*norm_ligy + accz*norm_ligz)
-                else:
-                    raise Exception(f"Method not implemented: {CONDENSE_MODE}")
             one_dim_traj.append([cv_val, xi_val, j])
             
         one_dim_trajs.append(one_dim_traj)

@@ -49,7 +49,7 @@ class RAMDSimulation(openmm_app.Simulation):
                  max_dist=50, debug_level=0, platform=None, 
                  properties=None, log_file_name=None, ramd_force_group=1,
                  ramd_seed=0, align_receptor=False, position_print_freq=None,
-                 max_travel=9e9):
+                 max_travel=9e9, ramp_start_ns=9e9, ramp_force_increase_per_ns=5):
         assert isinstance(integrator, ramd_integrator.RamdIntegrator), \
             "A RAMD simulation must use one of the available integrators in "\
             "the openmm_ramd.integrator module."
@@ -59,7 +59,8 @@ class RAMDSimulation(openmm_app.Simulation):
         self.logger = None
         if log_file_name is not None:
             self.logger = logger.RAMD_logger(log_file_name)
-            
+        
+        self.start_ramd_force_magnitude = ramd_force_magnitude
         self.force_handler = force.RAMD_Force_Handler(ramd_force_magnitude, 
                                                  ligand_atom_indices,
                                                  receptor_atom_indices,
@@ -72,6 +73,9 @@ class RAMDSimulation(openmm_app.Simulation):
         self.ramd_steps = ramd_steps
         self.r_min_ramd = r_min_ramd
         self.max_travel = max_travel
+        self.timestep = integrator.getStepSize()
+        self.ramp_start_step = int(ramp_start_ns / self.timestep.value_in_unit(unit.nanoseconds))
+        self.ramd_force_increase_per_step = int(ramp_force_increase_per_ns * self.timestep.value_in_unit(unit.nanoseconds))
         self.force_out_freq = force_out_freq
         if position_print_freq == None:
             self.position_print_freq = self.force_out_freq
@@ -453,6 +457,12 @@ class RAMDSimulation(openmm_app.Simulation):
                         "   >>> KEEP PREVIOUS ACCELERATION DIRECTION: "\
                         f"{random_direction}; ||r|| = {random_direction_magnitude}", 
                         self.counter)
+                        
+            if self.counter > self.ramp_start_step:
+                new_force_magnitude = self.start_ramd_force_magnitude \
+                    + kcal_per_mole_per_angstrom * self.ramd_force_increase_per_step \
+                    * (self.counter - self.ramp_start_step)
+                self.force_handler.set_new_RAMD_force_magnitude(new_force_magnitude, self.context)
         
         # Unnecessary output
         # These are done every RAMD evaluation

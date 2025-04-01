@@ -12,8 +12,12 @@ def test_uniform_milestone_locations(small_linear_logfile_persistent):
     num_milestones = 10
     [trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, 
      num_simulations, temperature, maxDist] = small_linear_logfile_persistent
-    one_dim_trajs = parser.condense_trajectories(trajectories, maxDist, 
-                                                 onlyZ=True)
+    norm_avgx = 0.0
+    norm_avgy = 0.0
+    norm_avgz = 1.0
+    norm_avg_vec = np.array([0.0, 0.0, 1.0])
+    one_dim_trajs = parser.condense_trajectories(
+        trajectories, maxDist, norm_avg_vec, norm_avgx, norm_avgy, norm_avgz)
     milestones, min_location, max_location, starting_cv_val, starting_index, h,\
         situation = milestoning.uniform_milestone_locations(
             one_dim_trajs, num_milestones, maxDist)

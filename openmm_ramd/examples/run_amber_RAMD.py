@@ -20,11 +20,13 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
                    nonbonded_cutoff=1.0, target_pressure=None, time_step=0.002, 
                    ramd_force_magnitude=14.0, steps_per_RAMD_update=50,
                    RAMD_cutoff_distance=0.0025, RAMD_max_distance=1.5,
+                   max_travel=0.5,
                    ramd_log_filename="ramd.log", minimize=False,
                    steps_per_energy_update=None, 
                    steps_per_trajectory_update=None, trajectory_filename=None,
                    max_num_steps=10000000, restraint_indices=None, 
-                   restraint_force_constant=None):
+                   restraint_force_constant=None, position_print_freq=None,
+                   integrator_type="langevin"):
     prmtop = app.AmberPrmtopFile(prmtop_filename)
     mypdb = app.PDBFile(pdb_filename)
     pdb_parmed = parmed.load_file(pdb_filename)
@@ -43,7 +45,7 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
         * unit.kilocalories_per_mole / unit.angstrom
     RAMD_cutoff_distance = RAMD_cutoff_distance * unit.nanometers
     RAMD_max_distance = RAMD_max_distance * unit.nanometers
-    
+    max_travel = max_travel * unit.nanometers
     
     system = prmtop.createSystem(
         nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
@@ -51,10 +53,19 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
     if target_pressure:
         barostat = mm.MonteCarloBarostat(target_pressure, temperature, 25)
         system.addForce(barostat)
-        
-    integrator = ramd_integrator.RamdLangevinIntegrator(
-        temperature, 1/unit.picosecond, time_step, lig_indices, rec_indices, 
-        mypdb.positions)
+    
+    if integrator_type == "langevin":
+        integrator = ramd_integrator.RamdLangevinIntegrator(
+            temperature, 1/unit.picosecond, time_step, lig_indices, rec_indices, 
+            mypdb.positions)
+            
+    elif integrator_type == "brownian":
+        integrator = ramd_integrator.RamdBrownianIntegrator(
+            temperature, 1/unit.picosecond, time_step, lig_indices, rec_indices, 
+            mypdb.positions)
+    else:
+        raise Exception(f"Integrator type not supported: {integrator_type}")
+    
     platform = mm.Platform.getPlatformByName('CUDA')
     if cuda_device_index is None:
         cuda_device_index = "0"
@@ -66,19 +77,24 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
         restraint_indices = rec_indices
     
     if restraint_force_constant is None:
-        restraint_force_constant = 1.0 * unit.kilocalories_per_mole / unit.angstrom**2
+        restraint_force_constant = 1.0
+    
+    restraint_force_constant *= unit.kilocalories_per_mole / unit.angstrom**2
     
     print("restraint_indices:", restraint_indices)
     base.impose_receptor_restraints(
         system, mypdb.positions, restraint_force_constant, restraint_indices)
     
+    ramd_steps = min(steps_per_RAMD_update, position_print_freq)
+    
     simulation = ramd.RAMDSimulation(
         prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
-        rec_indices, ramd_steps=steps_per_RAMD_update, 
+        rec_indices, ramd_steps=ramd_steps, 
         r_min_ramd=RAMD_cutoff_distance, 
         force_out_freq=steps_per_RAMD_update, 
-        max_dist=RAMD_max_distance,
-        platform=platform, properties=properties, log_file_name=ramd_log_filename)
+        max_dist=RAMD_max_distance, max_travel=max_travel,
+        platform=platform, properties=properties, log_file_name=ramd_log_filename,
+        position_print_freq=position_print_freq)
     
     simulation.context.setPositions(mypdb.positions)
     simulation.context.setPeriodicBoxVectors(*box_vectors)

@@ -22,8 +22,11 @@ def small_linear_logfile_persistent():
     Create logfile output that is persistent across the tests.
     """
     trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, \
-        num_simulations, temperature, maxDist \
-        = parser.parse_ramd_log_file(test_small_log)
+        num_simulations, temperature, maxDist, num_exit_events, \
+        trajectories_file_indices, trajectories_starting_steps \
+        = parser.parse_ramd_log_file(test_small_log,
+                                     skip_checks=True)
+    
     return trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, \
         num_simulations, temperature, maxDist
 
@@ -32,9 +35,13 @@ def large_linear_logfile_persistent():
     """
     Create logfile output that is persistent across the tests.
     """
+    
     trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, \
-        num_simulations, temperature, maxDist \
-        = parser.parse_ramd_log_file(test_large_log)
+        num_simulations, temperature, maxDist, num_exit_events, \
+        trajectories_file_indices, trajectories_starting_steps \
+        = parser.parse_ramd_log_file(test_large_log,
+                                     skip_checks=True)
+    
     return trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, \
         num_simulations, temperature, maxDist
 
