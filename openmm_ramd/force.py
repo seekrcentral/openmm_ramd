@@ -83,7 +83,10 @@ class RAMD_Force_Handler():
     def set_new_RAMD_force_magnitude(self, new_force_magnitude, context):
         old_force_magnitude = self.random_force_magnitude
         self.random_force_magnitude = new_force_magnitude
-        self.force_vector *= (new_force_magnitude/old_force_magnitude)
+        if old_force_magnitude.value_in_unit(kcal_per_mole_per_angstrom) == 0.0:
+            self.force_vector = new_force_magnitude * self.random_vector
+        else:
+            self.force_vector *= (new_force_magnitude/old_force_magnitude)
         context.setParameter("magnitude", new_force_magnitude)
 
         return

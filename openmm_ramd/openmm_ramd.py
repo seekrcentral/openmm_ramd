@@ -255,6 +255,9 @@ class RAMDSimulation(openmm_app.Simulation):
                 "correct number of ligand indices. Correct number: "\
                 f"{len(self.receptor_atom_indices)}. Number in integrator: "\
                 f"{num_rec_atoms}"
+        
+        self.checked_atom_counts = True
+        return
     
     def RAMD_start(self):
         self.counter = 0
@@ -350,6 +353,7 @@ class RAMDSimulation(openmm_app.Simulation):
         
         self.old_lig_com = lig_prot_com
         self.force_change_prot_lig_com = lig_prot_com
+        # Returns in units of Angstroms
         return lig_prot_com
     
     def RAMD_step(self, numSteps=50):
