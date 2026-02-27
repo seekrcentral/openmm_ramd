@@ -320,13 +320,13 @@ class RamdBrownianIntegrator(RamdIntegrator):
         kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
         thermal_energy = kB * self.temperature
         
-        # Add global variables for Langevin integration
+        # Add global variables for Brownian integration
         self.addGlobalVariable("thermal_energy", thermal_energy)
         self.addGlobalVariable("friction_coeff", self.friction_coeff)
         self.addGlobalVariable("fscale", 0.0)
         self.addGlobalVariable("noiseAmplitude", 0.0)
         
-        # Add per-DOF variables for Langevin integration
+        # Add per-DOF variables for Brownian integration
         self.addPerDofVariable("oldx", 0)
         return
         
@@ -352,7 +352,7 @@ class RamdBrownianIntegrator(RamdIntegrator):
         return
     
     def getFriction(self):
-        return self.friction
+        return self.friction_coeff
     
     def setFriction(self, friction_coeff):
         self.friction_coeff = friction_coeff
@@ -368,3 +368,36 @@ class RamdBrownianIntegrator(RamdIntegrator):
         thermal_energy = kB * temperature
         self.setGlobalVariableByName("thermal_energy", thermal_energy)
         return
+
+class RamdVerletIntegrator(RamdIntegrator):
+    def __init__(self, dt, lig_indices, 
+                 rec_indices, starting_positions):
+        # Initialize the superclass integrator
+        super(RamdVerletIntegrator, self).__init__(
+            dt, lig_indices, rec_indices, starting_positions)
+        return
+        
+    def prepare_integration_quantities(self):
+        # Add per-DOF variables for Verlet integration
+        self.addPerDofVariable("old_x", 0)
+        return
+        
+    def perform_integration_steps(self):
+        # perform Verlet steps
+        self.addUpdateContextState()
+        self.addComputePerDof("old_x", "x")
+        self.addComputePerDof("v", "v+dt*f/m")
+        self.addComputePerDof("x", "x+dt*v")
+        self.addConstrainPositions()
+        self.addComputePerDof("v", "(x-old_x)/dt")
+        return
+    
+    def updateStartingPositions(self, new_positions):
+        """
+        Run this command after a minimization to update the starting positions
+        so that the correct atoms are selected for the COM-COM calculation.
+        """
+        super(RamdVerletIntegrator, self).updateStartingPositions(
+            new_positions)
+        return
+    
