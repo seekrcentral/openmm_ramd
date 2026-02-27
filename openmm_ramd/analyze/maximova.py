@@ -20,11 +20,9 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
 
-import openmm_ramd.analyze.modules.parser as parser
-import openmm_ramd.analyze.modules.samples as samples
+import openmm_ramd.analyze.base as analyze_base
 
 NUM_MONTE_CARLO_SAMPLES = 100
 NUM_ASSOC_PROP_STEPS = 1000
@@ -123,9 +121,9 @@ def fit_and_extrapolate(force_const_dict_times, image_directory=None,
     
     if not silent:
         print("Printing values extrapolated to zero force:")
-        print("ln(ln(tau_0/fs)):", samples.pretty_string_value_error(
+        print("ln(ln(tau_0/fs)):", analyze_base.pretty_string_value_error(
             intercept_avg, intercept_std))
-        print("tau_0:", samples.pretty_string_value_error(
+        print("tau_0:", analyze_base.pretty_string_value_error(
             time_0, median_diff), "ps")
     
     if make_plot:
@@ -143,7 +141,7 @@ def maximova(ramd_log_files, include_all_times=False, image_directory=None,
         print("Reading log files...")
     for ramd_log_filename in ramd_log_files:
         end_steps, forceRAMD_, time_step_ \
-            = parser.parse_ramd_log_file_quick(
+            = analyze_base.parse_ramd_log_file_quick(
                 ramd_log_filename, include_all_times)
         
         force_const_dict_steps[forceRAMD_] += end_steps

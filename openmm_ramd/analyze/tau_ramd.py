@@ -19,7 +19,7 @@ import argparse
 import statistics
 import random
 
-import openmm_ramd.analyze.modules.parser as parser
+import openmm_ramd.analyze.base as analyze_base
 
 def bootstrap(completed_times, fraction=0.8, num_instances=200):
     """
@@ -55,7 +55,7 @@ def tau_ramd(ramd_log_files, include_all_times=False):
     all_end_steps = []
     for ramd_log_filename in ramd_log_files:
         end_steps, forceRAMD_, time_step_ \
-            = parser.parse_ramd_log_file_quick(
+            = analyze_base.parse_ramd_log_file_quick(
                 ramd_log_filename, include_all_times)
         
         if forceRAMD is None:
