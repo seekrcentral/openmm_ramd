@@ -146,3 +146,44 @@ def pretty_string_value_error(value, error, error_digits=2, use_unicode=True):
             new_string = "(%s +/- %s) * 10^%s" % (
                 new_value_mantissa, new_error_mantissa, value_exponent_str)
     return new_string
+
+def get_last_lines_in_file(filename):
+    """
+    Retrieve the last 
+    """
+    with open(filename, "rb") as f:
+        f.seek (0, 2)           # Seek @ EOF
+        fsize = f.tell()        # Get Size
+        f.seek (max (fsize-2048, 0), 0) # Set pos @ last n chars
+        lines = []
+        for i, bline in enumerate(f):
+            try:
+                line = bline.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+            
+            lines.append(line)
+    return lines
+
+def escaped_successfully(log_filename):
+    last_lines = get_last_lines_in_file(log_filename)
+    for i, bline in enumerate(last_lines):
+        try:
+            line = bline.decode("utf-8")
+        except (UnicodeDecodeError, AttributeError):
+            line = bline
+        
+        exit_event_search = re.match("EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED", line)
+        if exit_event_search:
+            return True
+        
+    return False
+        
+def ran_out_of_time(log_filename):
+    last_lines = get_last_lines_in_file(log_filename)
+    for i, line in enumerate(last_lines):
+        exit_event_search = re.match("EXIT: (\d+)  > MAXIMUM TIME EXCEEDED", line)
+        if exit_event_search:
+            return True
+        
+    return False
