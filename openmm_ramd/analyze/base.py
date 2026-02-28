@@ -28,7 +28,7 @@ def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
                 line = bline.decode("utf-8")
             except UnicodeDecodeError:
                 continue
-            forceRAMD_search = re.match("RAMD: forceRAMD * (\d+\.?\d*[eE]?[+-]?\d*)", line)
+            forceRAMD_search = re.match(r"RAMD: forceRAMD * (\d+\.?\d*[eE]?[+-]?\d*)", line)
             if forceRAMD_search:
                 forceRAMD_ = float(forceRAMD_search.group(1))
                 if forceRAMD is not None:
@@ -43,7 +43,7 @@ def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
                 else:
                     forceRAMD = forceRAMD_
             
-            timeStep_search = re.match("RAMD: timeStep * (\d+\.?\d*[eE]?[+-]?\d*)", line)
+            timeStep_search = re.match(r"RAMD: timeStep * (\d+\.?\d*[eE]?[+-]?\d*)", line)
             if timeStep_search:
                 timeStep_ = float(timeStep_search.group(1))
                 if timeStep is not None:
@@ -54,11 +54,11 @@ def parse_ramd_log_file_quick(ramd_log_filename, include_all_times=False):
                     timeStep = timeStep_
             
             if include_all_times:
-                ramd_force_search = re.match("RAMD FORCE: (\d+) >", line)
+                ramd_force_search = re.match(r"RAMD FORCE: (\d+) >", line)
                 if ramd_force_search:
                     exit_step = int(ramd_force_search.group(1))
             
-            exit_event_search = re.match("EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED", line)
+            exit_event_search = re.match(r"EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED", line)
             if exit_event_search:
                 exit_step = int(exit_event_search.group(1))
             
@@ -173,7 +173,7 @@ def escaped_successfully(log_filename):
         except (UnicodeDecodeError, AttributeError):
             line = bline
         
-        exit_event_search = re.match("EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED", line)
+        exit_event_search = re.match(r"EXIT: (\d+)  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED", line)
         if exit_event_search:
             return True
         
@@ -182,7 +182,7 @@ def escaped_successfully(log_filename):
 def ran_out_of_time(log_filename):
     last_lines = get_last_lines_in_file(log_filename)
     for i, line in enumerate(last_lines):
-        exit_event_search = re.match("EXIT: (\d+)  > MAXIMUM TIME EXCEEDED", line)
+        exit_event_search = re.match(r"EXIT: (\d+)  > MAXIMUM TIME EXCEEDED", line)
         if exit_event_search:
             return True
         
