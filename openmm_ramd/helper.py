@@ -293,7 +293,7 @@ def make_ramd_simulation(
     rec_indices = ramd_parameters["receptor_indices"]
     lig_indices = ramd_parameters["ligand_indices"]
     ramd_force_magnitude = ramd_parameters["ramd_force_magnitude"] * unit.kilojoules_per_mole / unit.nanometer
-    RAMD_cutoff_distance = ramd_parameters["RAMD_cutoff_distance"]
+    RAMD_cutoff_distance = ramd_parameters["RAMD_cutoff_distance"] * unit.nanometers
     RAMD_max_distance = ramd_parameters["RAMD_max_distance"]
     max_travel = ramd_parameters["max_travel"]
     ramp_start_ns = ramd_parameters.get("ramp_start_ns", 0.0)
