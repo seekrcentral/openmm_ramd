@@ -355,7 +355,7 @@ def write_conformations_to_pdb(
         xyz = np.array(positions_list)
         traj = mdtraj.Trajectory(xyz, mdtraj.Topology.from_openmm(simulation.topology))
         # Set mdtraj's periodic box vectors
-        box_vectors = simulation.context.getPeriodicBoxVectors()
+        box_vectors = state.getPeriodicBoxVectors()
         traj.unitcell_vectors = np.array(
             [[box_vectors[0][0].value_in_unit(unit.nanometers), 
               box_vectors[0][1].value_in_unit(unit.nanometers), 
