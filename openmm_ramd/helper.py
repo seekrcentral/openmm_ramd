@@ -357,7 +357,7 @@ def write_conformations_to_pdb(
         # Set mdtraj's periodic box vectors
         box_vectors = state.getPeriodicBoxVectors()
         traj.unitcell_vectors = np.array(
-            [[box_vectors[0][0].value_in_unit(unit.nanometers), 
+            [[[box_vectors[0][0].value_in_unit(unit.nanometers), 
               box_vectors[0][1].value_in_unit(unit.nanometers), 
               box_vectors[0][2].value_in_unit(unit.nanometers)],
              [box_vectors[1][0].value_in_unit(unit.nanometers), 
@@ -365,7 +365,7 @@ def write_conformations_to_pdb(
               box_vectors[1][2].value_in_unit(unit.nanometers)],
              [box_vectors[2][0].value_in_unit(unit.nanometers), 
               box_vectors[2][1].value_in_unit(unit.nanometers), 
-              box_vectors[2][2].value_in_unit(unit.nanometers)]])
+              box_vectors[2][2].value_in_unit(unit.nanometers)]]])
         atom_set_list = []
         for index in rec_indices:
             atom_set_list.append(set([traj.topology.atom(index)]))
