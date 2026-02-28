@@ -292,13 +292,13 @@ def make_ramd_simulation(
     position_print_freq = ramd_parameters["position_print_freq"]
     rec_indices = ramd_parameters["receptor_indices"]
     lig_indices = ramd_parameters["ligand_indices"]
-    ramd_force_magnitude = ramd_parameters["ramd_force_magnitude"] * unit.kilojoules_per_mole / unit.nanometer
-    RAMD_cutoff_distance = ramd_parameters["RAMD_cutoff_distance"] * unit.nanometers
-    RAMD_max_distance = ramd_parameters["RAMD_max_distance"] * unit.nanometers
-    max_travel = ramd_parameters["max_travel"] * unit.nanometers
-    ramp_start_ns = ramd_parameters.get("ramp_start_ns", 0.0) * unit.nanoseconds
+    ramd_force_magnitude = ramd_parameters["ramd_force_magnitude"]
+    RAMD_cutoff_distance = ramd_parameters["RAMD_cutoff_distance"]
+    RAMD_max_distance = ramd_parameters["RAMD_max_distance"]
+    max_travel = ramd_parameters["max_travel"]
+    ramp_start_ns = ramd_parameters.get("ramp_start_ns", 0.0)
     ramp_force_increase_per_ns = ramd_parameters.get(
-        "ramp_force_increase_per_ns", 0.0) * unit.kilojoules_per_mole / unit.nanometer / unit.nanoseconds
+        "ramp_force_increase_per_ns", 0.0)
     ramd_steps = min(steps_per_RAMD_update, position_print_freq)
     
     simulation = ramd_simulation.RAMDSimulation(
