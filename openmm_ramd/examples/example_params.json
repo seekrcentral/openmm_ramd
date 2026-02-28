@@ -35,9 +35,9 @@
         "max_travel": 9e9,
         "max_num_steps": 100000000,
         "ramp_start_ns": 0.0,
-        "ramp_force_increase_per_ns": 0.0,
+        "ramp_force_increase_per_ns": 5.0,
         "num_starting_structures": 5,
         "num_velocity_restarts": 3,
-        "steps_between_structures": 1000000
+        "steps_between_structures": 10000
     }
 }
