@@ -376,6 +376,8 @@ def write_conformations_to_pdb(
         for index in rec_indices:
             atom_set_list.append(set([traj.topology.atom(index)]))
         assert len(atom_set_list) > 0
+        # Convert to float32 to avoid dtype mismatch with mdtraj's C extension
+        traj.xyz = traj.xyz.astype(np.float32)
         traj.image_molecules(inplace=True, anchor_molecules=atom_set_list)
         structure_fullname = structure_basename.format(i)
         print("saving structure to", structure_fullname)
