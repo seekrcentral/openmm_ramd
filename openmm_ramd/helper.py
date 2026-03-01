@@ -27,6 +27,7 @@ ALLOWED_SIM_PARAMETER_KEYS = {
     "nonbonded_cutoff",
     "pressure",
     "friction_coeff",
+    "hydrogen_mass",
     "random_seed",
     "integrator_type",
     "restraint_force_constant",
@@ -96,9 +97,10 @@ def make_system_from_amber_inputs(
     if pressure is not None:
         pressure = pressure * unit.bar
     #time_step = parameters["time_step"] * unit.picoseconds
+    hydrogen_mass = sim_parameters.get("hydrogen_mass", None) * unit.daltons
     system = prmtop.createSystem(
         nonbondedMethod=openmm_app.PME, nonbondedCutoff=nonbonded_cutoff,
-        constraints=openmm_app.HBonds, hydrogenMass=3.0*unit.daltons,)
+        constraints=openmm_app.HBonds, hydrogenMass=hydrogen_mass,)
     if pressure:
         barostat = openmm.MonteCarloBarostat(pressure, temperature, 25)
         system.addForce(barostat)
