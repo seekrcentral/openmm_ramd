@@ -42,14 +42,32 @@ class RAMDSimulation(openmm_app.Simulation):
     quote : str
         Compiled string including quote and optional attribution.
     """
-    def __init__(self, topology, system, integrator, ramd_force_magnitude, 
-                 ligand_atom_indices, receptor_atom_indices=None, 
-                 ramd_steps=50, r_min_ramd=0.025, 
-                 force_out_freq=50, md_steps=0, md_start="no", r_min_md=0, 
-                 max_dist=50, debug_level=0, platform=None, 
-                 properties=None, log_file_name=None, ramd_force_group=1,
-                 ramd_seed=0, align_receptor=False, position_print_freq=None,
-                 max_travel=9e9, ramp_start_ns=9e9, ramp_force_increase_per_ns=5.0):
+    def __init__(
+            self, 
+            topology, 
+            system, 
+            integrator, 
+            ramd_force_magnitude, 
+            ligand_atom_indices, 
+            receptor_atom_indices=None, 
+            ramd_steps=50, 
+            r_min_ramd=0.025, 
+            force_out_freq=50, 
+            md_steps=0, 
+            md_start="no", 
+            r_min_md=0, 
+            max_dist=50, 
+            debug_level=0, 
+            platform=None, 
+            properties=None, 
+            log_file_name=None, 
+            ramd_force_group=1,
+            ramd_seed=0, 
+            align_receptor=False, 
+            position_print_freq=None,
+            max_travel=9e9, 
+            ramp_start_ns=9e9, 
+            ramp_force_increase_per_ns=5.0):
         assert isinstance(integrator, ramd_integrator.RamdIntegrator), \
             "A RAMD simulation must use one of the available integrators in "\
             "the openmm_ramd.integrator module."
@@ -146,7 +164,9 @@ class RAMDSimulation(openmm_app.Simulation):
             "PositionPrintFreq must be a multiple of ramdSteps."
         return
     
-    def max_distance_exceeded(self, timestep):
+    def max_distance_exceeded(
+            self, 
+            timestep):
         self.logger.exit_log(
             f"{timestep}  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED", 
             print_also=False)
@@ -157,7 +177,9 @@ class RAMDSimulation(openmm_app.Simulation):
             f"{timestep}  > EXIT OPENMM", print_also=False)
         return
     
-    def max_time_exceeded(self, timestep):
+    def max_time_exceeded(
+            self, 
+            timestep):
         self.logger.exit_log(
             f"{timestep}  > MAXIMUM TIME EXCEEDED", print_also=False)
         self.logger.exit_log(
@@ -169,7 +191,9 @@ class RAMDSimulation(openmm_app.Simulation):
             self.system, self.force_handler.ligand_atom_indices)
         return mass.value_in_unit(unit.daltons)
     
-    def set_reference_positions(self, positions=None):
+    def set_reference_positions(
+            self, 
+            positions=None):
         if positions is None:
             state = self.context.getState(getPositions=True)
             positions = state.getPositions()
@@ -180,7 +204,10 @@ class RAMDSimulation(openmm_app.Simulation):
                     xyz=xyz, topology=self.mdtraj_topology)
         return
         
-    def align_positions_by_reference(self, positions, ref_indices):
+    def align_positions_by_reference(
+            self, 
+            positions, 
+            ref_indices):
         xyz = np.array(positions.value_in_unit(unit.nanometers))
         self.mdtraj_trajectory.xyz = xyz
         self.mdtraj_trajectory.superpose(
@@ -192,7 +219,10 @@ class RAMDSimulation(openmm_app.Simulation):
         #self.mdtraj_trajectory.save(pdb_filename)
         return
     
-    def get_lig_com(self, positions=None, skip_alignment=False):
+    def get_lig_com(
+            self, 
+            positions=None, 
+            skip_alignment=False):
         if positions is None:
             state = self.context.getState(getPositions = True)
             positions = state.getPositions()
@@ -207,7 +237,10 @@ class RAMDSimulation(openmm_app.Simulation):
                                   self.force_handler.ligand_atom_indices)
         return com
         
-    def get_rec_com(self, positions=None, skip_alignment=False):
+    def get_rec_com(
+            self, 
+            positions=None, 
+            skip_alignment=False):
         if positions is None:
             state = self.context.getState(getPositions = True)
             positions = state.getPositions()
@@ -356,7 +389,9 @@ class RAMDSimulation(openmm_app.Simulation):
         # Returns in units of Angstroms
         return lig_prot_com
     
-    def RAMD_step(self, numSteps=50):
+    def RAMD_step(
+            self, 
+            numSteps=50):
         self.step(numSteps)
         if not self.checked_atom_counts:
             self.check_atom_count()
@@ -482,7 +517,9 @@ class RAMDSimulation(openmm_app.Simulation):
         self.counter += self.ramd_steps
         return lig_prot_com_distance
     
-    def run_RAMD_sim(self, max_num_steps=1e8):
+    def run_RAMD_sim(
+            self, 
+            max_num_steps=1e8):
         self.counter = 0
         self.context.setTime(0.0)
         start_lig_prot_dist = self.RAMD_start()

@@ -22,7 +22,6 @@ except ImportError:
     
 from openmm_ramd.base import kcal_per_mole_per_angstrom
 
-#RAMD_FORCE_EXPRESSION = "-(f_x*x1 + f_y*y1 + f_z*z1)"
 RAMD_FORCE_EXPRESSION = "-magnitude*(f_x*x1 + f_y*y1 + f_z*z1)"
 
 class RAMD_Force_Handler():

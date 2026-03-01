@@ -1,0 +1,102 @@
+"""
+Run a swarm of RAMD simulations starting from a set of conformations
+generated from a conventional MD simulation.
+"""
+
+import os
+import glob
+import json
+import argparse
+
+import numpy as np
+import mdtraj
+
+import openmm_ramd.helper as openmm_ramd_helper
+
+DEFAULT_STEPS_BETWEEN_STRUCTURES = 1000000
+
+def run_swarm(
+        parameter_file: str,
+        cuda_device_index: str | None = "0",
+        ):
+    with open(parameter_file) as f:
+        parameters = json.load(f)
+
+    ff_parameters = parameters.get("ff_parameters", {})
+    sim_parameters = parameters.get("sim_parameters", {})
+    ramd_parameters = parameters.get("ramd_parameters", {})
+
+    num_starting_structures = ramd_parameters.get("num_starting_structures", 0)
+    steps_between_structures = ramd_parameters.get("steps_between_structures", 
+                                                   DEFAULT_STEPS_BETWEEN_STRUCTURES)
+    num_velocity_restarts = ramd_parameters.get("num_velocity_restarts", 1)
+
+    if num_starting_structures > 0:
+        starting_names_glob = os.path.join("starting_*.pdb")
+        if len(glob.glob(starting_names_glob)) >= num_starting_structures:
+            print("Starting structures already exist - not regenerating.")
+            structure_names = sorted(glob.glob(starting_names_glob))
+        else:
+            structure_names = openmm_ramd_helper.simulate_conventional(
+                ff_parameters=ff_parameters,
+                sim_parameters=sim_parameters,
+                ramd_parameters=ramd_parameters,
+                num_structures_to_save=num_starting_structures,
+                steps_between_structures=steps_between_structures,
+                minimize=True,
+                cuda_device_index=cuda_device_index,
+                )
+        print("Finished conventional sims")
+    else:
+        structure_names = [ff_parameters["pdb_filename"]]
+    
+    print(f"Starting at RAMD simulation 0.")
+    for i, structure_name in enumerate(structure_names):
+        for j in range(num_velocity_restarts):
+            ramd_log_filename = f"ramd_{i}_{j}.log"
+            if openmm_ramd_helper.should_run(ramd_log_filename):
+                positions = openmm_ramd_helper.simulate_ramd(
+                    ff_parameters=ff_parameters,
+                    sim_parameters=sim_parameters,
+                    ramd_parameters=ramd_parameters,
+                    starting_structure_name=structure_name,
+                    minimize=True,
+                    ramd_log_filename=ramd_log_filename,
+                    cuda_device_index=cuda_device_index
+                    )
+                # Save the frames
+                pdb_filename = ff_parameters["pdb_filename"]
+                traj = mdtraj.load(pdb_filename)
+                traj.xyz = np.array([positions[0]])
+                frame_traj = mdtraj.load(pdb_filename)
+                for k in range(1, len(positions)):
+                    frame_traj.xyz = np.array([positions[k]])
+                    traj = traj.join(frame_traj)
+                receptor_indices = ramd_parameters["receptor_indices"]
+                atom_set_list = [set(traj.topology.atom(i) for i in receptor_indices)]
+                traj.image_molecules(inplace=True, anchor_molecules=atom_set_list)
+                traj.save(f"ramd_frames_{i}_{j}.dcd")
+                if i < num_starting_structures - 1:
+                    print("Completed simulation, now on to simulation", i+1, j+1)
+            else:
+                print(f"Skipping simulation {i} {j} with output file "
+                    f"{ramd_log_filename}. Already completed.")
+
+if __name__ == "__main__":
+    argparser = argparse.ArgumentParser(description=__doc__)
+    argparser.add_argument(
+        "parameter_file", metavar="PARAMETER_FILE", type=str,
+        help="The parameter file containing all the input files for a system.")
+
+    argparser.add_argument(
+        "-c", "--cuda_device_index", dest="cuda_device_index", default="0",
+        help="modify which cuda_device_index to run the simulation on. For "\
+        "example, the number 0 or 1 would suffice. To run on multiple GPU "\
+        "indices, simply enter comma separated indices. Example: '0,1'. "\
+        "If a value is not supplied, '0' will be used by default.", type=str)
+    
+    args = argparser.parse_args()
+    args = vars(args)
+    parameter_file = args["parameter_file"]
+    cuda_device_index = args["cuda_device_index"]
+    run_swarm(parameter_file, cuda_device_index)
