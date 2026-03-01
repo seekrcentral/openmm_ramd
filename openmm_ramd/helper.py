@@ -198,6 +198,8 @@ def choose_ramd_integrator(
             temperature, friction_coeff, time_step, lig_indices,
             rec_indices, starting_positions)
         random_seed = sim_parameters.get("random_seed", 0)
+        if random_seed != 0:
+            random_seed += 1
         integrator.setRandomNumberSeed(random_seed)
     elif sim_parameters["integrator_type"] == "verlet":
         time_step = sim_parameters["time_step"] * unit.picoseconds
@@ -213,6 +215,8 @@ def choose_ramd_integrator(
             temperature, friction_coeff, time_step, lig_indices,
             rec_indices, starting_positions)
         random_seed = sim_parameters.get("random_seed", 0)
+        if random_seed != 0:
+            random_seed += 1
         integrator.setRandomNumberSeed(random_seed)
     else:
         raise ValueError(
