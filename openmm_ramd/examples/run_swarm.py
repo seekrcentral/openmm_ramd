@@ -53,6 +53,7 @@ def run_swarm(
     print(f"Starting at RAMD simulation 0.")
     for i, structure_name in enumerate(structure_names):
         for j in range(num_velocity_restarts):
+            # TODO: add i and j to random seed calc.
             ramd_log_filename = f"ramd_{i}_{j}.log"
             if openmm_ramd_helper.should_run(ramd_log_filename):
                 positions = openmm_ramd_helper.simulate_ramd(
@@ -74,6 +75,8 @@ def run_swarm(
                     traj = traj.join(frame_traj)
                 receptor_indices = ramd_parameters["receptor_indices"]
                 atom_set_list = [set(traj.topology.atom(i) for i in receptor_indices)]
+                # Convert to float32 to avoid dtype mismatch with mdtraj's C extension
+                traj.xyz = traj.xyz.astype(np.float32)
                 traj.image_molecules(inplace=True, anchor_molecules=atom_set_list)
                 traj.save(f"ramd_frames_{i}_{j}.dcd")
                 if i < num_starting_structures - 1:
