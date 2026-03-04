@@ -371,7 +371,7 @@ def write_conformations_to_pdb(
               box_vectors[1][2].value_in_unit(unit.nanometers)],
              [box_vectors[2][0].value_in_unit(unit.nanometers), 
               box_vectors[2][1].value_in_unit(unit.nanometers), 
-              box_vectors[2][2].value_in_unit(unit.nanometers)]]])
+              box_vectors[2][2].value_in_unit(unit.nanometers)]]], dtype=np.float32)
         atom_set_list = []
         for index in rec_indices:
             atom_set_list.append(set([traj.topology.atom(index)]))
