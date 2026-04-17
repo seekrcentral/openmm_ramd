@@ -266,7 +266,7 @@ def make_conventional_simulation(
         topology, system, integrator, platform, properties)
     pdb = openmm_app.PDBFile(ff_parameters["pdb_filename"])
     simulation.context.setPositions(pdb.positions)
-    box_vectors = topology.getPeriodicBoxVectors()
+    box_vectors = (pdb.topology).getPeriodicBoxVectors()
     simulation.context.setPeriodicBoxVectors(*box_vectors)
     if minimize:
         simulation.minimizeEnergy()
@@ -319,7 +319,7 @@ def make_ramd_simulation(
     
     pdb = openmm_app.PDBFile(starting_structure_name)
     simulation.context.setPositions(pdb.positions)
-    box_vectors = topology.getPeriodicBoxVectors()
+    box_vectors = (pdb.topology).getPeriodicBoxVectors()
     simulation.context.setPeriodicBoxVectors(*box_vectors)
     if minimize:
         simulation.minimizeEnergy()
