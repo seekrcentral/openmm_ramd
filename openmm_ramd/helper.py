@@ -477,6 +477,7 @@ def simulate_ramd(
         minimize: bool,
         ramd_log_filename: str,
         cuda_device_index: str | None = "0",
+        trajectory_filename: str | None = None
         ):
     """
     Run a RAMD simulation using the specified parameters.
@@ -493,7 +494,7 @@ def simulate_ramd(
     simulation = make_ramd_simulation(
         topology, system, integrator, platform, properties, ff_parameters,
         sim_parameters, ramd_parameters, starting_structure_name, minimize,
-        ramd_log_filename)
+        ramd_log_filename, trajectory_filename=trajectory_filename)
         
     positions = perform_ramd_simulation(
         simulation, sim_parameters, ramd_parameters)
