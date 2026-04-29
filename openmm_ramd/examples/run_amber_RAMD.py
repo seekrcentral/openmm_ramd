@@ -16,7 +16,8 @@ import openmm_ramd.base as base
 
 def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices, 
                    cuda_device_index=None, temperature=298.0, 
-                   nonbonded_cutoff=1.0, target_pressure=None, time_step=0.002, 
+                   nonbonded_cutoff=1.0, target_pressure=None, time_step=0.002,
+                   hydrogen_mass_amu=1.0,
                    ramd_force_magnitude=14.0, steps_per_RAMD_update=50,
                    RAMD_cutoff_distance=0.0025, RAMD_max_distance=1.5,
                    max_travel=0.5,
@@ -25,7 +26,7 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
                    steps_per_trajectory_update=None, trajectory_filename=None,
                    max_num_steps=10000000, restraint_indices=None, 
                    restraint_force_constant=None, position_print_freq=None,
-                   integrator_type="langevin"):
+                   integrator_type="langevin", ramp_start_ns=0.0, ramp_force_increase_per_ns=0.0):
     prmtop = app.AmberPrmtopFile(prmtop_filename)
     mypdb = app.PDBFile(pdb_filename)
     box_vectors = (mypdb.topology).getPeriodicBoxVectors()
@@ -47,7 +48,7 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
     
     system = prmtop.createSystem(
         nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
-        constraints=app.HBonds)
+        constraints=app.HBonds, hydrogenMass=hydrogen_mass_amu*unit.amu)
     if target_pressure:
         barostat = mm.MonteCarloBarostat(target_pressure, temperature, 25)
         system.addForce(barostat)
@@ -83,6 +84,9 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
     base.impose_receptor_restraints(
         system, mypdb.positions, restraint_force_constant, restraint_indices)
     
+    if position_print_freq is None:
+        position_print_freq = steps_per_RAMD_update
+
     ramd_steps = min(steps_per_RAMD_update, position_print_freq)
     
     simulation = ramd.RAMDSimulation(
@@ -92,7 +96,8 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
         force_out_freq=steps_per_RAMD_update, 
         max_dist=RAMD_max_distance, max_travel=max_travel,
         platform=platform, properties=properties, log_file_name=ramd_log_filename,
-        position_print_freq=position_print_freq)
+        position_print_freq=position_print_freq,
+        ramp_start_ns=ramp_start_ns, ramp_force_increase_per_ns=ramp_force_increase_per_ns)
     
     simulation.context.setPositions(mypdb.positions)
     simulation.context.setPeriodicBoxVectors(*box_vectors)
