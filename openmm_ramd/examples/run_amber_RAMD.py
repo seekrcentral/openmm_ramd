@@ -9,7 +9,6 @@ from sys import stdout
 import openmm.app as app
 import openmm as mm
 import openmm.unit as unit
-import parmed
 
 import openmm_ramd.openmm_ramd as ramd
 import openmm_ramd.integrator as ramd_integrator
@@ -29,13 +28,12 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
                    integrator_type="langevin"):
     prmtop = app.AmberPrmtopFile(prmtop_filename)
     mypdb = app.PDBFile(pdb_filename)
-    pdb_parmed = parmed.load_file(pdb_filename)
-    assert pdb_parmed.box_vectors is not None, "No box vectors "\
+    box_vectors = (mypdb.topology).getPeriodicBoxVectors()
+
+    assert box_vectors is not None, "No box vectors "\
         "found in {}. ".format(pdb_filename) \
         + "Box vectors for an anchor must be defined with a CRYST "\
         "line within the PDB file."
-    
-    box_vectors = pdb_parmed.box_vectors
     
     temperature = temperature * unit.kelvin
     nonbonded_cutoff = nonbonded_cutoff * unit.nanometers
