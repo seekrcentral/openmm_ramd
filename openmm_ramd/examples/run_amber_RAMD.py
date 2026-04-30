@@ -17,10 +17,10 @@ import openmm_ramd.base as base
 def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices, 
                    cuda_device_index=None, temperature=298.0, 
                    nonbonded_cutoff=1.0, target_pressure=None, time_step=0.002,
-                   hydrogen_mass_amu=1.0,
+                   hydrogen_mass_amu=None,
                    ramd_force_magnitude=14.0, steps_per_RAMD_update=50,
                    RAMD_cutoff_distance=0.0025, RAMD_max_distance=1.5,
-                   max_travel=0.5,
+                   max_travel=9e9,
                    ramd_log_filename="ramd.log", minimize=False,
                    steps_per_energy_update=None, 
                    steps_per_trajectory_update=None, trajectory_filename=None,
@@ -45,10 +45,17 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
     RAMD_cutoff_distance = RAMD_cutoff_distance * unit.nanometers
     RAMD_max_distance = RAMD_max_distance * unit.nanometers
     max_travel = max_travel * unit.nanometers
-    
-    system = prmtop.createSystem(
-        nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
-        constraints=app.HBonds, hydrogenMass=hydrogen_mass_amu*unit.amu)
+    ramp_force_increase_per_ns = ramp_force_increase_per_ns * unit.kilocalories_per_mole / unit.angstrom
+
+    if hydrogen_mass_amu:
+        system = prmtop.createSystem(
+            nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
+            constraints=app.HBonds, hydrogenMass=hydrogen_mass_amu*unit.amu)
+    else:
+        system = prmtop.createSystem(
+            nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
+            constraints=app.HBonds)
+        
     if target_pressure:
         barostat = mm.MonteCarloBarostat(target_pressure, temperature, 25)
         system.addForce(barostat)
