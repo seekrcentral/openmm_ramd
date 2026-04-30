@@ -499,7 +499,7 @@ class RAMDSimulation(openmm_app.Simulation):
                         
             if self.counter > self.ramp_start_step:
                 new_force_magnitude = self.start_ramd_force_magnitude \
-                    + kcal_per_mole_per_angstrom * self.ramd_force_increase_per_step \
+                    + self.ramd_force_increase_per_step \
                     * (self.counter - self.ramp_start_step)
                 self.force_handler.set_new_RAMD_force_magnitude(new_force_magnitude, self.context)
             
