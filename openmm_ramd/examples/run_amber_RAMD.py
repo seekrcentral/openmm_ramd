@@ -91,10 +91,10 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
     base.impose_receptor_restraints(
         system, mypdb.positions, restraint_force_constant, restraint_indices)
     
-    if position_print_freq is None:
-        position_print_freq = steps_per_RAMD_update
-
-    ramd_steps = min(steps_per_RAMD_update, position_print_freq)
+    if position_print_freq:
+        ramd_steps = min(steps_per_RAMD_update, position_print_freq)
+    else:
+        ramd_steps = steps_per_RAMD_update
     
     simulation = ramd.RAMDSimulation(
         prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 

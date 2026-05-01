@@ -305,7 +305,10 @@ def make_ramd_simulation(
     ramp_start_ns = ramd_parameters.get("ramp_start_ns", 0.0)
     ramp_force_increase_per_ns = ramd_parameters.get(
         "ramp_force_increase_per_ns", 0.0) * unit.kilocalories_per_mole / unit.angstrom
-    ramd_steps = min(steps_per_RAMD_update, position_print_freq)
+    if position_print_freq:
+        ramd_steps = min(steps_per_RAMD_update, position_print_freq)
+    else:
+        ramd_steps = steps_per_RAMD_update
     
     simulation = ramd_simulation.RAMDSimulation(
         topology, system, integrator, ramd_force_magnitude, lig_indices, 
