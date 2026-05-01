@@ -84,12 +84,12 @@ RAMD_max_distance = 1.5 * unit.nanometer
 prmtop = app.AmberPrmtopFile(prmtop_filename)
 mypdb = app.PDBFile(input_pdb_file)
 pdb_parmed = parmed.load_file(input_pdb_file)
-assert pdb_parmed.box_vectors is not None, "No box vectors "\
+box_vectors = (mypdb.topology).getPeriodicBoxVectors()
+
+assert box_vectors is not None, "No box vectors "\
     "found in {}. ".format(input_pdb_file) \
     + "Box vectors for an anchor must be defined with a CRYST "\
     "line within the PDB file."
-
-box_vectors = pdb_parmed.box_vectors
 
 system = prmtop.createSystem(nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
         constraints=app.HBonds)

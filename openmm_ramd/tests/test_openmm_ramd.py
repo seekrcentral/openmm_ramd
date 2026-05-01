@@ -20,7 +20,6 @@ try:
     import openmm.unit as unit
 except ImportError:
     import simtk.openmm.unit as unit
-import parmed
 
 import openmm_ramd.openmm_ramd as openmm_ramd
 import openmm_ramd.integrator as ramd_integrator
@@ -43,13 +42,12 @@ def make_openmm_ramd_simulation_object(
     input_pdb_file = os.path.join(TEST_DIRECTORY, "../data/hsp90_INH.pdb")
     prmtop = openmm_app.AmberPrmtopFile(prmtop_filename)
     mypdb = openmm_app.PDBFile(input_pdb_file)
-    pdb_parmed = parmed.load_file(input_pdb_file)
-    assert pdb_parmed.box_vectors is not None, "No box vectors "\
+    box_vectors = (mypdb.topology).getPeriodicBoxVectors()
+
+    assert box_vectors is not None, "No box vectors "\
         "found in {}. ".format(input_pdb_file) \
         + "Box vectors for an anchor must be defined with a CRYST "\
         "line within the PDB file."
-    
-    box_vectors = pdb_parmed.box_vectors
     
     system = prmtop.createSystem(
         nonbondedMethod=openmm_app.PME, nonbondedCutoff=1.0*unit.nanometers,
