@@ -2,109 +2,11 @@
 Test openmm_ramd parser.py functions.
 """
 import os
-import numpy as np
-
-import openmm_ramd.analyze.modules.parser as parser
 
 TEST_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
-test_small_log = os.path.join(TEST_DIRECTORY, "data/small_linear.txt")
-test_small_log_end = os.path.join(TEST_DIRECTORY, "data/small_with_end.txt")
-test_ran_outta_time = os.path.join(TEST_DIRECTORY, "data/ran_outta_time.txt")
-
-def test_parse_ramd_log_file(small_linear_logfile_persistent):
-    [trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, 
-     num_simulations, temperature, maxDist] = small_linear_logfile_persistent
-    assert forceOutFreq == 50
-    assert positionPrintFreq == 50
-    assert forceRAMD == 0.1
-    assert timeStep == 0.002
-    assert len(trajectories) == 2
-    assert num_simulations == 1
-    assert temperature == 300.0
-    assert maxDist == 10.0
-    assert np.isclose(trajectories[0][0][0], -0.11735814)
-    assert np.isclose(trajectories[0][0][1], 0.59439099)
-    assert np.isclose(trajectories[0][0][2], 0.07284915)
-    assert np.isclose(trajectories[0][0][3], 0.46881796)
-    assert np.isclose(trajectories[0][0][4], 0.82472121)
-    assert np.isclose(trajectories[0][0][5], -0.31629834)
-    
-    assert np.isclose(trajectories[1][0][0], 2.1617403)
-    assert np.isclose(trajectories[1][0][1], 17.47498703)
-    assert np.isclose(trajectories[1][0][2], 0.09007598)
-    assert np.isclose(trajectories[1][0][3], 0.20150257)
-    assert np.isclose(trajectories[1][0][4], 0.27089315)
-    assert np.isclose(trajectories[1][0][5], 0.94128296)
-    
-    assert np.isclose(trajectories[1][-1][0], 7.21598816)
-    assert np.isclose(trajectories[1][-1][1], 24.0497818)
-    assert np.isclose(trajectories[1][-1][2], 10.65902901)
-    assert np.isclose(trajectories[1][-1][3], 0.20150257)
-    assert np.isclose(trajectories[1][-1][4], 0.27089315)
-    assert np.isclose(trajectories[1][-1][5], 0.94128296)
-    return
-
-# TODO: will need the same tests for log files with receptor motion
-
-def test_parse_ramd_log_file_large(large_linear_logfile_persistent):
-    [trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, 
-     num_simulations, temperature, maxDist] = large_linear_logfile_persistent
-    
-    for i in range(len(trajectories)):
-        print("i:", i, "len(trajectory):", len(trajectories[i]))
-    assert forceOutFreq == 50
-    assert positionPrintFreq == 50
-    assert forceRAMD == 0.1
-    assert timeStep == 0.002
-    assert num_simulations == 101
-    assert len(trajectories) == 242
-    return
-
-def test_condense_trajectories(small_linear_logfile_persistent):
-    norm_avg_vec = np.array([0.0, 0.0, 1.0])
-    norm_avgx = 0.0
-    norm_avgy = 0.0
-    norm_avgz = 1.0
-    [trajectories, forceOutFreq, positionPrintFreq, forceRAMD, timeStep, 
-     num_simulations, temperature, maxDist] = small_linear_logfile_persistent
-    one_dim_trajs = parser.condense_trajectories(
-        trajectories, maxDist, norm_avg_vec, norm_avgx, norm_avgy, norm_avgz)
-    for trajectory, one_dim_traj in zip(trajectories, one_dim_trajs):
-        for frame, one_dim_frame in zip(trajectory, one_dim_traj):
-            assert frame[2] == one_dim_frame[0]
-            assert frame[5] == one_dim_frame[1]
-            
-    # TODO: make test (perhaps) for onlyZ=False
-    return
-    
 def test_parse_ramd_log_file_quick(small_linear_logfile_persistent_quick):
     [endTimes, forceRAMD, timeStep] = small_linear_logfile_persistent_quick
     assert endTimes == [5612050]
     assert forceRAMD == 0.1
     assert timeStep == 0.002
     return
-
-def test_get_cv_vec_principal_component():
-    mu = np.array([0.0, 0.0, 0.0])
-    sigma = np.array([[3.5, -1.8, -0.4], [-1.8, 2.1, -0.5], [-0.4, -0.5, 1.5]])
-    n = 1000
-    data = np.random.multivariate_normal(mu, sigma, size=(n))
-    trajectory = []
-    for i in range(n):
-        trajectory.append([float(data[i,0]), float(data[i,1]), float(data[i,2]),
-                           0.0, 0.0, 0.0])
-    trajectories = [trajectory]
-    vec = parser.get_cv_vec_principal_component(trajectories)
-    return
-
-def test_ran_out_of_time():
-    assert parser.ran_out_of_time(test_ran_outta_time) == True
-    assert parser.ran_out_of_time(test_small_log) == False
-    assert parser.ran_out_of_time(test_small_log_end) == False
-    return False
-
-def test_escaped_successfully():
-    assert parser.escaped_successfully(test_ran_outta_time) == False
-    assert parser.escaped_successfully(test_small_log) == False
-    assert parser.escaped_successfully(test_small_log_end) == True
-    

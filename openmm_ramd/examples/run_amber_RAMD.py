@@ -9,7 +9,6 @@ from sys import stdout
 import openmm.app as app
 import openmm as mm
 import openmm.unit as unit
-import parmed
 
 import openmm_ramd.openmm_ramd as ramd
 import openmm_ramd.integrator as ramd_integrator
@@ -17,25 +16,25 @@ import openmm_ramd.base as base
 
 def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices, 
                    cuda_device_index=None, temperature=298.0, 
-                   nonbonded_cutoff=1.0, target_pressure=None, time_step=0.002, 
+                   nonbonded_cutoff=1.0, target_pressure=None, time_step=0.002,
+                   hydrogen_mass_amu=None,
                    ramd_force_magnitude=14.0, steps_per_RAMD_update=50,
                    RAMD_cutoff_distance=0.0025, RAMD_max_distance=1.5,
-                   max_travel=0.5,
+                   max_travel=9e9,
                    ramd_log_filename="ramd.log", minimize=False,
                    steps_per_energy_update=None, 
                    steps_per_trajectory_update=None, trajectory_filename=None,
                    max_num_steps=10000000, restraint_indices=None, 
                    restraint_force_constant=None, position_print_freq=None,
-                   integrator_type="langevin"):
+                   integrator_type="langevin", ramp_start_ns=0.0, ramp_force_increase_per_ns=0.0):
     prmtop = app.AmberPrmtopFile(prmtop_filename)
     mypdb = app.PDBFile(pdb_filename)
-    pdb_parmed = parmed.load_file(pdb_filename)
-    assert pdb_parmed.box_vectors is not None, "No box vectors "\
+    box_vectors = (mypdb.topology).getPeriodicBoxVectors()
+
+    assert box_vectors is not None, "No box vectors "\
         "found in {}. ".format(pdb_filename) \
         + "Box vectors for an anchor must be defined with a CRYST "\
         "line within the PDB file."
-    
-    box_vectors = pdb_parmed.box_vectors
     
     temperature = temperature * unit.kelvin
     nonbonded_cutoff = nonbonded_cutoff * unit.nanometers
@@ -46,10 +45,17 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
     RAMD_cutoff_distance = RAMD_cutoff_distance * unit.nanometers
     RAMD_max_distance = RAMD_max_distance * unit.nanometers
     max_travel = max_travel * unit.nanometers
-    
-    system = prmtop.createSystem(
-        nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
-        constraints=app.HBonds)
+    ramp_force_increase_per_ns = ramp_force_increase_per_ns * unit.kilocalories_per_mole / unit.angstrom
+
+    if hydrogen_mass_amu:
+        system = prmtop.createSystem(
+            nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
+            constraints=app.HBonds, hydrogenMass=hydrogen_mass_amu*unit.amu)
+    else:
+        system = prmtop.createSystem(
+            nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
+            constraints=app.HBonds)
+        
     if target_pressure:
         barostat = mm.MonteCarloBarostat(target_pressure, temperature, 25)
         system.addForce(barostat)
@@ -85,7 +91,10 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
     base.impose_receptor_restraints(
         system, mypdb.positions, restraint_force_constant, restraint_indices)
     
-    ramd_steps = min(steps_per_RAMD_update, position_print_freq)
+    if position_print_freq:
+        ramd_steps = min(steps_per_RAMD_update, position_print_freq)
+    else:
+        ramd_steps = steps_per_RAMD_update
     
     simulation = ramd.RAMDSimulation(
         prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
@@ -94,7 +103,8 @@ def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices,
         force_out_freq=steps_per_RAMD_update, 
         max_dist=RAMD_max_distance, max_travel=max_travel,
         platform=platform, properties=properties, log_file_name=ramd_log_filename,
-        position_print_freq=position_print_freq)
+        position_print_freq=position_print_freq,
+        ramp_start_ns=ramp_start_ns, ramp_force_increase_per_ns=ramp_force_increase_per_ns)
     
     simulation.context.setPositions(mypdb.positions)
     simulation.context.setPeriodicBoxVectors(*box_vectors)

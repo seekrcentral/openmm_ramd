@@ -55,6 +55,8 @@ def run_swarm(
         for j in range(num_velocity_restarts):
             # TODO: add i and j to random seed calc.
             ramd_log_filename = f"ramd_{i}_{j}.log"
+            if sim_parameters.get("steps_per_trajectory_update") is not None:
+                trajectory_filename = f"ramd_trajectory_{i}_{j}.dcd"
             if openmm_ramd_helper.should_run(ramd_log_filename):
                 positions = openmm_ramd_helper.simulate_ramd(
                     ff_parameters=ff_parameters,
@@ -63,7 +65,8 @@ def run_swarm(
                     starting_structure_name=structure_name,
                     minimize=True,
                     ramd_log_filename=ramd_log_filename,
-                    cuda_device_index=cuda_device_index
+                    cuda_device_index=cuda_device_index,
+                    trajectory_filename=trajectory_filename
                     )
                 # Save the frames
                 pdb_filename = ff_parameters["pdb_filename"]
