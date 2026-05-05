@@ -55,6 +55,7 @@ def run_swarm(
         for j in range(num_velocity_restarts):
             # TODO: add i and j to random seed calc.
             ramd_log_filename = f"ramd_{i}_{j}.log"
+            trajectory_filename = None
             if sim_parameters.get("steps_per_trajectory_update") is not None:
                 trajectory_filename = f"ramd_trajectory_{i}_{j}.dcd"
             if openmm_ramd_helper.should_run(ramd_log_filename):
