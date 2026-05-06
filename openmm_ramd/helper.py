@@ -468,7 +468,7 @@ def simulate_conventional(
     structure_names = write_conformations_to_pdb(
         simulation, num_structures_to_save, steps_between_structures,
         structure_basename="starting_{}.pdb", 
-        rec_indices=sim_parameters.get("restraint_indices", []),
+        rec_indices=ramd_parameters.get("receptor_indices", []),
     )
     return structure_names
 
