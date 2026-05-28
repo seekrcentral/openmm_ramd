@@ -23,6 +23,7 @@ except ImportError:
 from openmm_ramd.base import kcal_per_mole_per_angstrom
 
 RAMD_FORCE_EXPRESSION = "-magnitude*(f_x*x1 + f_y*y1 + f_z*z1)"
+RAMD_FORCE_EXPRESSION_RELATIVE = "-magnitude*(f_x*(x1-x2) + f_y*(y1-y2) + f_z*(z1-z2))"
 
 class RAMD_Force_Handler():
     """
@@ -62,7 +63,7 @@ class RAMD_Force_Handler():
                                             [0.0, 0.0, 0.0])
             
         else:
-            force = openmm.CustomCentroidBondForce(2, RAMD_FORCE_EXPRESSION)
+            force = openmm.CustomCentroidBondForce(2, RAMD_FORCE_EXPRESSION_RELATIVE)
             force.setForceGroup(self.force_group)
             self.group_index_lig = force.addGroup(self.ligand_atom_indices)
             self.group_index_rec = force.addGroup(self.receptor_atom_indices)
