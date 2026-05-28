@@ -142,7 +142,7 @@ class RAMDSimulation(openmm_app.Simulation):
         super(RAMDSimulation, self).minimizeEnergy()
         # TODO: make a super call and include the update positions for this
         state = self.context.getState(getPositions=True)
-        new_positions = state.getPositions()
+        new_positions = state.getPositions(asNumpy=True)
         self.integrator.updateStartingPositions(new_positions)
     
     def recompute_RAMD_force(self):
@@ -196,7 +196,7 @@ class RAMDSimulation(openmm_app.Simulation):
             positions=None):
         if positions is None:
             state = self.context.getState(getPositions=True)
-            positions = state.getPositions()
+            positions = state.getPositions(asNumpy=True)
         xyz = np.array(positions.value_in_unit(unit.nanometers))
         self.mdtraj_trajectory_ref = mdtraj.Trajectory(
                     xyz=xyz, topology=self.mdtraj_topology_ref)
@@ -225,7 +225,7 @@ class RAMDSimulation(openmm_app.Simulation):
             skip_alignment=False):
         if positions is None:
             state = self.context.getState(getPositions = True)
-            positions = state.getPositions()
+            positions = state.getPositions(asNumpy=True)
         
         if self.align_receptor and not skip_alignment:
             # Align by receptor positions
@@ -243,7 +243,7 @@ class RAMDSimulation(openmm_app.Simulation):
             skip_alignment=False):
         if positions is None:
             state = self.context.getState(getPositions = True)
-            positions = state.getPositions()
+            positions = state.getPositions(asNumpy=True)
         
         if self.align_receptor and not skip_alignment:
             # Align by receptor positions
@@ -399,8 +399,8 @@ class RAMDSimulation(openmm_app.Simulation):
         # Obtain positions for either a possible force update or position print
         if (self.counter % self.force_out_freq == 0) \
                 or (self.counter % self.position_print_freq == 0):
-            #state = self.context.getState(getPositions = True)
-            #positions = state.getPositions()
+            state = self.context.getState(getPositions = True)
+            positions = state.getPositions(asNumpy=True)
             #lig_com = self.get_lig_com(positions)
             lig_com = self.get_lig_com_from_integrator()
             if self.force_handler.receptor_atom_indices is not None:
