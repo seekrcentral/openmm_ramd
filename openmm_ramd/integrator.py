@@ -329,23 +329,15 @@ class RamdNoseHooverIntegrator(RamdIntegrator):
         self.num_dofs = num_dofs
         if self.num_dofs is None and system is not None:
             self.num_dofs = self._compute_full_system_num_dofs(system)
-        self._validate_parameters()
         super(RamdNoseHooverIntegrator, self).__init__(
             dt, lig_indices, rec_indices, starting_positions)
         return
-
-    @staticmethod
-    def _value_in_unit(value, unit_):
-        try:
-            return value.value_in_unit(unit_)
-        except AttributeError:
-            return value
 
     def _compute_full_system_num_dofs(self, system):
         massive_particles = set()
         for particle in range(system.getNumParticles()):
             mass = system.getParticleMass(particle)
-            if self._value_in_unit(mass, unit.dalton) > 0:
+            if mass.value_in_unit(unit.dalton) > 0:
                 massive_particles.add(particle)
 
         num_dofs = 3*len(massive_particles)
@@ -360,24 +352,6 @@ class RamdNoseHooverIntegrator(RamdIntegrator):
                 num_dofs -= 3
         return num_dofs
 
-    def _validate_parameters(self):
-        temperature_value = self._value_in_unit(self.temperature, unit.kelvin)
-        frequency_value = self._value_in_unit(
-            self.collision_frequency, unit.picoseconds**-1)
-        if temperature_value < 0:
-            raise ValueError("temperature cannot be negative")
-        if frequency_value <= 0:
-            raise ValueError("collision_frequency must be positive")
-        if self.chain_length <= 0:
-            raise ValueError("chain_length must be positive")
-        if self.num_mts <= 0:
-            raise ValueError("num_mts must be positive")
-        if self.num_yoshida_suzuki not in (1, 3, 5, 7):
-            raise ValueError("num_yoshida_suzuki must be 1, 3, 5, or 7")
-        if self.num_dofs is not None and self.num_dofs <= 0:
-            raise ValueError("num_dofs must be positive")
-        return
-
     def _get_yoshida_suzuki_weights(self):
         if self.num_yoshida_suzuki == 1:
             return [1.0]
@@ -388,27 +362,39 @@ class RamdNoseHooverIntegrator(RamdIntegrator):
             return [0.2967324292201065, 0.2967324292201065,
                     -0.186929716880426, 0.2967324292201065,
                     0.2967324292201065]
-        return [0.784513610477560, 0.235573213359357,
-                -1.17767998417887, 1.31518632068391,
-                -1.17767998417887, 0.235573213359357,
-                0.784513610477560]
+        if self.num_yoshida_suzuki == 7:
+            return [0.784513610477560, 0.235573213359357,
+                    -1.17767998417887, 1.31518632068391,
+                    -1.17767998417887, 0.235573213359357,
+                    0.784513610477560]
+        raise ValueError("num_yoshida_suzuki must be 1, 3, 5, or 7")
 
     def prepare_integration_quantities(self):
         kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
         thermal_energy = kB * self.temperature
         num_dofs = 0 if self.num_dofs is None else self.num_dofs
 
-        # Add global variables for Nose-Hoover chain integration
+        # Thermostat parameters shared by the full Nose-Hoover chain.
         self.addGlobalVariable("nh_thermal_energy", thermal_energy)
         self.addGlobalVariable("nh_collision_frequency",
                                self.collision_frequency)
         self.addGlobalVariable("nh_num_dofs", num_dofs)
+
+        # Work variables for particle kinetic energy and the accumulated
+        # velocity scale returned by the chain propagation.
         self.addGlobalVariable("nh_kinetic_energy", 0)
         self.addGlobalVariable("nh_twice_kinetic_energy", 0)
         self.addGlobalVariable("nh_scale", 1)
+
+        # Temporary scalars used inside the Yoshida-Suzuki/MTS loop, plus the
+        # reported total heat bath energy.
         self.addGlobalVariable("nh_wdt", 0)
         self.addGlobalVariable("nh_aa", 0)
         self.addGlobalVariable("nh_heat_bath_energy", 0)
+
+        # Persistent state for each chain bead: position, velocity, mass, and
+        # force.  These correspond to chainData, chainMasses, and chainForces
+        # in OpenMM's native kernels.
         for bead in range(self.chain_length):
             self.addGlobalVariable(f"nh_chain_pos_{bead}", 0)
             self.addGlobalVariable(f"nh_chain_vel_{bead}", 0)
@@ -417,7 +403,6 @@ class RamdNoseHooverIntegrator(RamdIntegrator):
 
         # Add per-DOF variables for LF-middle integration
         self.addPerDofVariable("x1", 0)
-        self.setKineticEnergyExpression("0.5*m*v*v")
         return
 
     def _add_update_chain_masses(self):
@@ -449,7 +434,7 @@ class RamdNoseHooverIntegrator(RamdIntegrator):
         for mts in range(self.num_mts):
             for weight in self._get_yoshida_suzuki_weights():
                 self.addComputeGlobal(
-                    "nh_wdt", f"{weight:.16g}*dt/{self.num_mts}")
+                    "nh_wdt", f"{weight}*dt/{self.num_mts}")
                 self.addComputeGlobal(
                     f"nh_chain_vel_{last_bead}",
                     f"nh_chain_vel_{last_bead}"
@@ -561,13 +546,6 @@ class RamdNoseHooverIntegrator(RamdIntegrator):
             "nh_collision_frequency", collision_frequency)
         return
 
-    def getFriction(self):
-        return self.getCollisionFrequency()
-
-    def setFriction(self, friction_coeff):
-        self.setCollisionFrequency(friction_coeff)
-        return
-
     def getNumDegreesOfFreedom(self):
         return self.getGlobalVariableByName("nh_num_dofs")
 
@@ -581,6 +559,8 @@ class RamdNoseHooverIntegrator(RamdIntegrator):
     def computeHeatBathEnergy(self):
         return (self.getGlobalVariableByName("nh_heat_bath_energy")
                 * unit.kilojoule_per_mole)
+
+# Could potentially add more getters for chain length, num mts, num ys, and ys weights to mirror OpenMM.
 
     def getChainState(self):
         positions = []
