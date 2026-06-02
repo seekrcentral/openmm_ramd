@@ -64,7 +64,7 @@ def run_swarm(
                     sim_parameters=sim_parameters,
                     ramd_parameters=ramd_parameters,
                     starting_structure_name=structure_name,
-                    minimize=True,
+                    minimize=False,
                     ramd_log_filename=ramd_log_filename,
                     cuda_device_index=cuda_device_index,
                     trajectory_filename=trajectory_filename
