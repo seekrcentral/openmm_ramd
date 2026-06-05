@@ -6,6 +6,7 @@ import os
 import time
 
 import numpy as np
+import pytest
 
 try:
     import openmm
@@ -224,4 +225,68 @@ def test_Brownian_linear_distributions():
     assert np.isclose(native_points_mean, ramd_points_mean, rtol=0.25)
     assert np.isclose(native_points_std, ramd_points_std, rtol=0.25)
     return
-    
+
+def test_NoseHoover_matches_openmm_reference():
+    if not hasattr(openmm, "NoseHooverIntegrator"):
+        pytest.skip("OpenMM NoseHooverIntegrator is not available")
+
+    system = openmm.System()
+    system.addParticle(12.0*unit.dalton)
+    system.addParticle(16.0*unit.dalton)
+    system.addConstraint(0, 1, 1.0*unit.nanometer)
+
+    positions = [
+        openmm.Vec3(0.0, 0.0, 0.0)*unit.nanometer,
+        openmm.Vec3(1.0, 0.0, 0.0)*unit.nanometer,
+    ]
+    velocities = [
+        openmm.Vec3(0.10, 0.20, 0.00)*unit.nanometer/unit.picosecond,
+        openmm.Vec3(0.10, -0.10, 0.05)*unit.nanometer/unit.picosecond,
+    ]
+    temperature = 300.0*unit.kelvin
+    collision_frequency = 1.0/unit.picosecond
+    step_size = 0.001*unit.picoseconds
+    platform = openmm.Platform.getPlatformByName("Reference")
+
+    native = openmm.NoseHooverIntegrator(
+        temperature, collision_frequency, step_size)
+    custom = ramd_integrator.RamdNoseHooverIntegrator(
+        temperature, collision_frequency, step_size, [0], [1], positions,
+        system=system)
+    assert custom.getNumDegreesOfFreedom() == 5
+
+    native_context = openmm.Context(system, native, platform)
+    native_context.setPositions(positions)
+    native_context.setVelocities(velocities)
+
+    custom_context = openmm.Context(system, custom, platform)
+    custom_context.setPositions(positions)
+    custom_context.setVelocities(velocities)
+
+    for step in range(25):
+        native.step(1)
+        custom.step(1)
+
+        native_state = native_context.getState(
+            getPositions=True, getVelocities=True)
+        custom_state = custom_context.getState(
+            getPositions=True, getVelocities=True)
+
+        native_positions = native_state.getPositions(
+            asNumpy=True).value_in_unit(unit.nanometer)
+        custom_positions = custom_state.getPositions(
+            asNumpy=True).value_in_unit(unit.nanometer)
+        native_velocities = native_state.getVelocities(
+            asNumpy=True).value_in_unit(unit.nanometer/unit.picosecond)
+        custom_velocities = custom_state.getVelocities(
+            asNumpy=True).value_in_unit(unit.nanometer/unit.picosecond)
+        native_heat_bath_energy = native.computeHeatBathEnergy().value_in_unit(
+            unit.kilojoule_per_mole)
+        custom_heat_bath_energy = custom.computeHeatBathEnergy().value_in_unit(
+            unit.kilojoule_per_mole)
+
+        assert np.allclose(custom_positions, native_positions, atol=1e-12), step
+        assert np.allclose(custom_velocities, native_velocities, atol=1e-12), step
+        assert np.isclose(
+            custom_heat_bath_energy, native_heat_bath_energy, atol=1e-12), step
+    return

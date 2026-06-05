@@ -27,6 +27,10 @@ ALLOWED_SIM_PARAMETER_KEYS = {
     "nonbonded_cutoff",
     "pressure",
     "friction_coeff",
+    "collision_frequency",
+    "chain_length",
+    "num_mts",
+    "num_yoshida_suzuki",
     "hydrogen_mass",
     "random_seed",
     "integrator_type",
@@ -157,6 +161,23 @@ def choose_topology_system_from_params(
     
     return topology, system
 
+NOSE_HOOVER_INTEGRATOR_TYPES = {
+    "nose_hoover", "nose-hoover", "nosehoover", "nose hoover"}
+
+def is_nose_hoover_integrator(integrator_type: str) -> bool:
+    return integrator_type.lower() in NOSE_HOOVER_INTEGRATOR_TYPES
+
+def get_nose_hoover_parameters(sim_parameters: dict):
+    temperature = sim_parameters["temperature"] * unit.kelvin
+    time_step = sim_parameters["time_step"] * unit.picoseconds
+    collision_frequency = sim_parameters.get(
+        "collision_frequency", 1.0) / unit.picosecond
+    chain_length = sim_parameters.get("chain_length", 3)
+    num_mts = sim_parameters.get("num_mts", 3)
+    num_yoshida_suzuki = sim_parameters.get("num_yoshida_suzuki", 7)
+    return (temperature, collision_frequency, time_step, chain_length,
+            num_mts, num_yoshida_suzuki)
+
 def choose_conventional_integrator(
         sim_parameters: dict
         ) -> openmm.Integrator:
@@ -179,6 +200,12 @@ def choose_conventional_integrator(
             temperature, friction_coeff, time_step)
         random_seed = sim_parameters.get("random_seed", 0)
         integrator.setRandomNumberSeed(random_seed)
+    elif is_nose_hoover_integrator(sim_parameters["integrator_type"]):
+        (temperature, collision_frequency, time_step, chain_length, num_mts,
+         num_yoshida_suzuki) = get_nose_hoover_parameters(sim_parameters)
+        integrator = openmm.NoseHooverIntegrator(
+            temperature, collision_frequency, time_step, chain_length,
+            num_mts, num_yoshida_suzuki)
     else:
         raise ValueError(
             f"Unsupported integrator type: {sim_parameters['integrator_type']}")
@@ -188,6 +215,7 @@ def choose_ramd_integrator(
         sim_parameters: dict,
         ramd_parameters: dict,
         starting_positions: list[openmm.Vec3],
+        system: openmm.System | None = None,
         ) -> ramd_integrator.RamdIntegrator:
     lig_indices = ramd_parameters["ligand_indices"]
     rec_indices = ramd_parameters["receptor_indices"]
@@ -220,6 +248,14 @@ def choose_ramd_integrator(
         if random_seed != 0:
             random_seed += 1
         integrator.setRandomNumberSeed(random_seed)
+    elif is_nose_hoover_integrator(sim_parameters["integrator_type"]):
+        (temperature, collision_frequency, time_step, chain_length, num_mts,
+         num_yoshida_suzuki) = get_nose_hoover_parameters(sim_parameters)
+        integrator = ramd_integrator.RamdNoseHooverIntegrator(
+            temperature, collision_frequency, time_step, lig_indices,
+            rec_indices, starting_positions, chain_length=chain_length,
+            num_mts=num_mts, num_yoshida_suzuki=num_yoshida_suzuki,
+            system=system)
     else:
         raise ValueError(
             f"Unsupported integrator type: {sim_parameters['integrator_type']}")
@@ -491,7 +527,7 @@ def simulate_ramd(
     starting_structure = openmm_app.PDBFile(starting_structure_name)
     starting_positions = starting_structure.positions
     integrator = choose_ramd_integrator(
-        sim_parameters, ramd_parameters, starting_positions)
+        sim_parameters, ramd_parameters, starting_positions, system=system)
     platform, properties = choose_platform_and_properties(cuda_device_index)
     add_restraints_to_system(system, ff_parameters, sim_parameters)
     simulation = make_ramd_simulation(

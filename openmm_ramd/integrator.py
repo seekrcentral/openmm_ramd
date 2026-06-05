@@ -306,6 +306,272 @@ class RamdLangevinMiddleIntegrator(RamdIntegrator):
         self.setGlobalVariableByName("thermal_energy", thermal_energy)
         return
 
+class RamdNoseHooverIntegrator(RamdIntegrator):
+    """
+    RAMD CustomIntegrator version of OpenMM's NoseHooverIntegrator.
+
+    This implements the same LF-middle splitting and Nose-Hoover chain
+    propagation used by OpenMM's C++ implementation for a full-system
+    thermostat.  Pass system, or pass num_dofs directly, to match the native
+    C++ degree-of-freedom count for constrained systems and systems with center
+    of mass motion removal.  If neither is provided, the integrator counts
+    massive degrees of freedom on the first step.
+    """
+    def __init__(self, temperature, collision_frequency, dt, lig_indices,
+                 rec_indices, starting_positions, chain_length=3, num_mts=3,
+                 num_yoshida_suzuki=7, num_dofs=None, system=None):
+        # Initialize the superclass integrator
+        self.temperature = temperature
+        self.collision_frequency = collision_frequency
+        self.chain_length = int(chain_length)
+        self.num_mts = int(num_mts)
+        self.num_yoshida_suzuki = int(num_yoshida_suzuki)
+        self.num_dofs = num_dofs
+        if self.num_dofs is None and system is not None:
+            self.num_dofs = self._compute_full_system_num_dofs(system)
+        super(RamdNoseHooverIntegrator, self).__init__(
+            dt, lig_indices, rec_indices, starting_positions)
+        return
+
+    def _compute_full_system_num_dofs(self, system):
+        massive_particles = set()
+        for particle in range(system.getNumParticles()):
+            mass = system.getParticleMass(particle)
+            if mass.value_in_unit(unit.dalton) > 0:
+                massive_particles.add(particle)
+
+        num_dofs = 3*len(massive_particles)
+        for constraint_index in range(system.getNumConstraints()):
+            particle1, particle2, distance = system.getConstraintParameters(
+                constraint_index)
+            if particle1 in massive_particles and particle2 in massive_particles:
+                num_dofs -= 1
+
+        for force_index in range(system.getNumForces()):
+            if isinstance(system.getForce(force_index), openmm.CMMotionRemover):
+                num_dofs -= 3
+        return num_dofs
+
+    def _get_yoshida_suzuki_weights(self):
+        if self.num_yoshida_suzuki == 1:
+            return [1.0]
+        if self.num_yoshida_suzuki == 3:
+            return [0.828981543588751, -0.657963087177502,
+                    0.828981543588751]
+        if self.num_yoshida_suzuki == 5:
+            return [0.2967324292201065, 0.2967324292201065,
+                    -0.186929716880426, 0.2967324292201065,
+                    0.2967324292201065]
+        if self.num_yoshida_suzuki == 7:
+            return [0.784513610477560, 0.235573213359357,
+                    -1.17767998417887, 1.31518632068391,
+                    -1.17767998417887, 0.235573213359357,
+                    0.784513610477560]
+        raise ValueError("num_yoshida_suzuki must be 1, 3, 5, or 7")
+
+    def prepare_integration_quantities(self):
+        kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
+        thermal_energy = kB * self.temperature
+        num_dofs = 0 if self.num_dofs is None else self.num_dofs
+
+        # Thermostat parameters shared by the full Nose-Hoover chain.
+        self.addGlobalVariable("nh_thermal_energy", thermal_energy)
+        self.addGlobalVariable("nh_collision_frequency",
+                               self.collision_frequency)
+        self.addGlobalVariable("nh_num_dofs", num_dofs)
+
+        # Work variables for particle kinetic energy and the accumulated
+        # velocity scale returned by the chain propagation.
+        self.addGlobalVariable("nh_kinetic_energy", 0)
+        self.addGlobalVariable("nh_twice_kinetic_energy", 0)
+        self.addGlobalVariable("nh_scale", 1)
+
+        # Temporary scalars used inside the Yoshida-Suzuki/MTS loop, plus the
+        # reported total heat bath energy.
+        self.addGlobalVariable("nh_wdt", 0)
+        self.addGlobalVariable("nh_aa", 0)
+        self.addGlobalVariable("nh_heat_bath_energy", 0)
+
+        # Persistent state for each chain bead: position, velocity, mass, and
+        # force.  These correspond to chainData, chainMasses, and chainForces
+        # in OpenMM's native kernels.
+        for bead in range(self.chain_length):
+            self.addGlobalVariable(f"nh_chain_pos_{bead}", 0)
+            self.addGlobalVariable(f"nh_chain_vel_{bead}", 0)
+            self.addGlobalVariable(f"nh_chain_mass_{bead}", 0)
+            self.addGlobalVariable(f"nh_chain_force_{bead}", 0)
+
+        # Add per-DOF variables for LF-middle integration
+        self.addPerDofVariable("x1", 0)
+        return
+
+    def _add_update_chain_masses(self):
+        frequency_sq = "nh_collision_frequency*nh_collision_frequency"
+        self.addComputeGlobal(
+            "nh_chain_mass_0",
+            f"nh_num_dofs*nh_thermal_energy/({frequency_sq})")
+        for bead in range(1, self.chain_length):
+            self.addComputeGlobal(
+                f"nh_chain_mass_{bead}",
+                f"nh_thermal_energy/({frequency_sq})")
+        return
+
+    def _add_initial_chain_forces(self):
+        self.addComputeGlobal(
+            "nh_chain_force_0",
+            "(nh_twice_kinetic_energy - nh_num_dofs*nh_thermal_energy)"
+            "/nh_chain_mass_0")
+        for bead in range(self.chain_length - 1):
+            self.addComputeGlobal(
+                f"nh_chain_force_{bead+1}",
+                f"(nh_chain_mass_{bead}*nh_chain_vel_{bead}"
+                f"*nh_chain_vel_{bead} - nh_thermal_energy)"
+                f"/nh_chain_mass_{bead+1}")
+        return
+
+    def _add_propagate_chain(self):
+        last_bead = self.chain_length - 1
+        for mts in range(self.num_mts):
+            for weight in self._get_yoshida_suzuki_weights():
+                self.addComputeGlobal(
+                    "nh_wdt", f"{weight}*dt/{self.num_mts}")
+                self.addComputeGlobal(
+                    f"nh_chain_vel_{last_bead}",
+                    f"nh_chain_vel_{last_bead}"
+                    f" + 0.5*nh_wdt*nh_chain_force_{last_bead}")
+                for bead in range(self.chain_length - 2, -1, -1):
+                    self.addComputeGlobal(
+                        "nh_aa",
+                        f"exp(-0.25*nh_wdt*nh_chain_vel_{bead+1})")
+                    self.addComputeGlobal(
+                        f"nh_chain_vel_{bead}",
+                        f"nh_aa*(nh_chain_vel_{bead}*nh_aa"
+                        f" + 0.5*nh_wdt*nh_chain_force_{bead})")
+                self.addComputeGlobal(
+                    "nh_scale", "nh_scale*exp(-nh_wdt*nh_chain_vel_0)")
+                for bead in range(self.chain_length):
+                    self.addComputeGlobal(
+                        f"nh_chain_pos_{bead}",
+                        f"nh_chain_pos_{bead}"
+                        f" + nh_chain_vel_{bead}*nh_wdt")
+                self.addComputeGlobal(
+                    "nh_chain_force_0",
+                    "(nh_scale*nh_scale*nh_twice_kinetic_energy"
+                    " - nh_num_dofs*nh_thermal_energy)/nh_chain_mass_0")
+                for bead in range(self.chain_length - 1):
+                    self.addComputeGlobal(
+                        "nh_aa",
+                        f"exp(-0.25*nh_wdt*nh_chain_vel_{bead+1})")
+                    self.addComputeGlobal(
+                        f"nh_chain_vel_{bead}",
+                        f"nh_aa*(nh_aa*nh_chain_vel_{bead}"
+                        f" + 0.5*nh_wdt*nh_chain_force_{bead})")
+                    self.addComputeGlobal(
+                        f"nh_chain_force_{bead+1}",
+                        f"(nh_chain_mass_{bead}*nh_chain_vel_{bead}"
+                        f"*nh_chain_vel_{bead} - nh_thermal_energy)"
+                        f"/nh_chain_mass_{bead+1}")
+                self.addComputeGlobal(
+                    f"nh_chain_vel_{last_bead}",
+                    f"nh_chain_vel_{last_bead}"
+                    f" + 0.5*nh_wdt*nh_chain_force_{last_bead}")
+        return
+
+    def _add_compute_heat_bath_energy(self):
+        energy_terms = []
+        for bead in range(self.chain_length):
+            prefac = "nh_num_dofs" if bead == 0 else "1"
+            energy_terms.append(
+                f"0.5*nh_chain_mass_{bead}*nh_chain_vel_{bead}"
+                f"*nh_chain_vel_{bead}"
+                f" + {prefac}*nh_thermal_energy*nh_chain_pos_{bead}")
+        self.addComputeGlobal("nh_heat_bath_energy", " + ".join(energy_terms))
+        return
+
+    def perform_integration_steps(self):
+        # Perform Nose-Hoover LF-middle steps
+        self.addUpdateContextState()
+        if self.num_dofs is None:
+            self.beginIfBlock("step_count = 0")
+            self.addComputeSum("nh_num_dofs", "1")
+            self.endBlock()
+
+        self._add_update_chain_masses()
+        self.addComputePerDof("v", "v + dt*f/m")
+        self.addConstrainVelocities()
+        self.addComputePerDof("x", "x + 0.5*dt*v")
+
+        self.addComputeSum("nh_kinetic_energy", "0.5*m*v*v")
+        self.addComputeGlobal("nh_twice_kinetic_energy",
+                              "2*nh_kinetic_energy")
+        self.addComputeGlobal("nh_scale", "1")
+        self.beginIfBlock("nh_kinetic_energy >= 1e-8")
+        self._add_initial_chain_forces()
+        self._add_propagate_chain()
+        self.endBlock()
+        self.addComputePerDof("v", "nh_scale*v")
+
+        self.addComputePerDof("x", "x + 0.5*dt*v")
+        self.addComputePerDof("x1", "x")
+        self.addConstrainPositions()
+        self.addComputePerDof("v", "v + (x-x1)/dt")
+        self._add_compute_heat_bath_energy()
+        return
+
+    def updateStartingPositions(self, new_positions):
+        """
+        Run this command after a minimization to update the starting positions
+        so that the correct atoms are selected for the COM-COM calculation.
+        """
+        super(RamdNoseHooverIntegrator, self).updateStartingPositions(
+            new_positions)
+        return
+
+    def getTemperature(self):
+        return self.temperature
+
+    def setTemperature(self, temperature):
+        self.temperature = temperature
+        kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
+        thermal_energy = kB * temperature
+        self.setGlobalVariableByName("nh_thermal_energy", thermal_energy)
+        return
+
+    def getCollisionFrequency(self):
+        return self.collision_frequency
+
+    def setCollisionFrequency(self, collision_frequency):
+        self.collision_frequency = collision_frequency
+        self.setGlobalVariableByName(
+            "nh_collision_frequency", collision_frequency)
+        return
+
+    def getNumDegreesOfFreedom(self):
+        return self.getGlobalVariableByName("nh_num_dofs")
+
+    def setNumDegreesOfFreedom(self, num_dofs):
+        if num_dofs <= 0:
+            raise ValueError("num_dofs must be positive")
+        self.num_dofs = num_dofs
+        self.setGlobalVariableByName("nh_num_dofs", num_dofs)
+        return
+
+    def computeHeatBathEnergy(self):
+        return (self.getGlobalVariableByName("nh_heat_bath_energy")
+                * unit.kilojoule_per_mole)
+
+# Could potentially add more getters for chain length, num mts, num ys, and ys weights to mirror OpenMM.
+
+    def getChainState(self):
+        positions = []
+        velocities = []
+        for bead in range(self.chain_length):
+            positions.append(
+                self.getGlobalVariableByName(f"nh_chain_pos_{bead}"))
+            velocities.append(
+                self.getGlobalVariableByName(f"nh_chain_vel_{bead}"))
+        return positions, velocities
+
 class RamdBrownianIntegrator(RamdIntegrator):
     def __init__(self, temperature, friction_coeff, dt, lig_indices, 
                  rec_indices, starting_positions):
