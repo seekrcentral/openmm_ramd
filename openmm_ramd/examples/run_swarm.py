@@ -83,7 +83,7 @@ def run_swarm(
                 traj.xyz = traj.xyz.astype(np.float32)
                 traj.image_molecules(inplace=True, anchor_molecules=atom_set_list)
                 traj.save(f"ramd_frames_{i}_{j}.dcd")
-                if i < num_starting_structures - 1:
+                if i < num_starting_structures - 1 or j < num_velocity_restarts -1:
                     print("Completed simulation, now on to simulation", i+1, j+1)
             else:
                 print(f"Skipping simulation {i} {j} with output file "
