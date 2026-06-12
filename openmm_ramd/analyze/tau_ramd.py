@@ -142,6 +142,24 @@ def tau_ramd_replicas(ramd_log_files, include_all_times=False):
     SD_comp = max(avg_SD_r, SD_replicas)
     return replica_results, tau_comp, SD_comp, avg_SD_r, SD_replicas
 
+def print_tau_ramd_results(replica_results, tau_comp, SD_comp, avg_SD_r, SD_replicas):
+    for replica_result in replica_results:
+        replica_number = replica_result["replica_index"] + 1
+        num_exits = replica_result["num_exits"]
+        num_sims = replica_result["num_sims"]
+        print(f"Replica {replica_number}: {num_exits} of {num_sims} trajectories exited successfully.")
+        print("Tau-RAMD results for this replica:")
+        print("tau_median (residence time):", replica_result["tau_median"], "ps")
+        print("tau mean (residence time):", replica_result["tau_mean"], "ps")
+        print("t_r (median interim residence time):", replica_result["t_r"], "ps")
+        print("SD_r (interim residence time standard deviation):", replica_result["SD_r"], "ps")
+    
+    print("Tau-RAMD results averaged over replicas:")
+    print("tau_comp (average t_r over replicas):", tau_comp, "ps")
+    print("SD_comp (computed residence time uncertainty):", SD_comp, "ps")
+    print("average SD_r over replicas:", avg_SD_r, "ps")
+    print("SD_replicas (standard deviation of t_r over replicas):", SD_replicas, "ps")
+
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description=__doc__)
     argparser.add_argument(
@@ -161,20 +179,4 @@ if __name__ == "__main__":
     
     replica_results, tau_comp, SD_comp, avg_SD_r, SD_replicas \
         = tau_ramd_replicas(ramd_log_files, include_all_times)
-    
-    for replica_result in replica_results:
-        replica_number = replica_result["replica_index"] + 1
-        num_exits = replica_result["num_exits"]
-        num_sims = replica_result["num_sims"]
-        print(f"Replica {replica_number}: {num_exits} of {num_sims} trajectories exited successfully.")
-        print("Tau-RAMD results for this replica:")
-        print("tau_median (residence time):", replica_result["tau_median"], "ps")
-        print("tau mean (residence time):", replica_result["tau_mean"], "ps")
-        print("t_r (median interim residence time):", replica_result["t_r"], "ps")
-        print("SD_r (interim residence time standard deviation):", replica_result["SD_r"], "ps")
-    
-    print("Tau-RAMD results averaged over replicas:")
-    print("tau_comp (average t_r over replicas):", tau_comp, "ps")
-    print("SD_comp (computed residence time uncertainty):", SD_comp, "ps")
-    print("average SD_r over replicas:", avg_SD_r, "ps")
-    print("SD_replicas (standard deviation of t_r over replicas):", SD_replicas, "ps")
+    print_tau_ramd_results(replica_results, tau_comp, SD_comp, avg_SD_r, SD_replicas)
