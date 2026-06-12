@@ -27,7 +27,7 @@ class RAMD_logger():
         full_string = prefix + string + "\n"
         self.file.write(full_string)
         if print_also:
-            print("full_string")
+            print(full_string)
         return
     
     def exit_log(self, string, print_also=False):
