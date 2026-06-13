@@ -329,6 +329,7 @@ def make_ramd_simulation(
         minimize: bool,
         ramd_log_filename: str,
         trajectory_filename: str | None = None,
+        starting_state_name: str | None = None,
         ) -> openmm.app.Simulation:
     steps_per_RAMD_update = ramd_parameters["steps_per_RAMD_update"]
     position_print_freq = ramd_parameters["position_print_freq"]
@@ -362,9 +363,14 @@ def make_ramd_simulation(
     simulation.context.setPeriodicBoxVectors(*box_vectors)
     if minimize:
         simulation.minimizeEnergy()
-    temperature = sim_parameters["temperature"] * unit.kelvin
-    random_seed = sim_parameters.get("random_seed", 0)
-    simulation.context.setVelocitiesToTemperature(temperature, random_seed)
+    if starting_state_name is None:
+        temperature = sim_parameters["temperature"] * unit.kelvin
+        random_seed = sim_parameters.get("random_seed", 0)
+        simulation.context.setVelocitiesToTemperature(temperature, random_seed)
+    else:
+        with open(starting_state_name) as f:
+            state = openmm.XmlSerializer.deserialize(f.read())
+        simulation.context.setState(state)
     steps_per_energy_update = sim_parameters.get("steps_per_energy_update", None)
     steps_per_trajectory_update = sim_parameters.get("steps_per_trajectory_update", None)
     if steps_per_energy_update is not None:
@@ -516,7 +522,8 @@ def simulate_ramd(
         minimize: bool,
         ramd_log_filename: str,
         cuda_device_index: str | None = "0",
-        trajectory_filename: str | None = None
+        trajectory_filename: str | None = None,
+        starting_state_name: str | None = None,
         ):
     """
     Run a RAMD simulation using the specified parameters.
@@ -533,7 +540,8 @@ def simulate_ramd(
     simulation = make_ramd_simulation(
         topology, system, integrator, platform, properties, ff_parameters,
         sim_parameters, ramd_parameters, starting_structure_name, minimize,
-        ramd_log_filename, trajectory_filename=trajectory_filename)
+        ramd_log_filename, trajectory_filename=trajectory_filename,
+        starting_state_name=starting_state_name)
         
     positions = perform_ramd_simulation(
         simulation, sim_parameters, ramd_parameters)

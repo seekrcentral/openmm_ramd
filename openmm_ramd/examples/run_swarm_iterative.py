@@ -13,15 +13,18 @@ import mdtraj
 import openmm_ramd.helper as openmm_ramd_helper
 import openmm_ramd.analyze.tau_ramd as tau_ramd_analysis
 
-DEFAULT_STEPS_BETWEEN_STRUCTURES = 1000000
-INITIAL_NUM_STARTING_STRUCTURES = 2
-INITIAL_NUM_TRAJECTORIES = 10
+DEFAULT_STEPS_BETWEEN_STRUCTURES = 1250000
+INITIAL_NUM_STARTING_STRUCTURES = 5
+INITIAL_NUM_TRAJECTORIES = 15
 TRAJECTORY_INCREMENT = 5
 MAX_NUM_STARTING_STRUCTURES = 8
 MAX_RELATIVE_SD = 0.5
 
 def starting_structure_name(replica_index):
     return f"starting_{replica_index}.pdb"
+
+def starting_state_name(replica_index):
+    return f"starting_{replica_index}.xml"
 
 def generate_starting_structure(
         ff_parameters,
@@ -32,27 +35,36 @@ def generate_starting_structure(
         cuda_device_index="0",
         ):
     starting_ff_parameters = dict(ff_parameters)
-    if replica_index > 0:
-        starting_ff_parameters["pdb_filename"] = starting_structure_name(
-            replica_index - 1)
+    starting_sim_parameters = dict(sim_parameters)
+    random_seed = starting_sim_parameters.get("random_seed", 0)
+    if random_seed != 0:
+        starting_sim_parameters["random_seed"] = random_seed + replica_index
     
-    openmm_ramd_helper.validate_sim_parameters(sim_parameters)
+    openmm_ramd_helper.validate_sim_parameters(starting_sim_parameters)
     openmm_ramd_helper.validate_ramd_parameters(ramd_parameters)
     topology, system = openmm_ramd_helper.choose_topology_system_from_params(
-        starting_ff_parameters, sim_parameters)
-    integrator = openmm_ramd_helper.choose_conventional_integrator(sim_parameters)
+        starting_ff_parameters, starting_sim_parameters)
+    integrator = openmm_ramd_helper.choose_conventional_integrator(
+        starting_sim_parameters)
     platform, properties = openmm_ramd_helper.choose_platform_and_properties(
         cuda_device_index)
     openmm_ramd_helper.add_restraints_to_system(
-        system, starting_ff_parameters, sim_parameters)
+        system, starting_ff_parameters, starting_sim_parameters)
     simulation = openmm_ramd_helper.make_conventional_simulation(
         topology, system, integrator, platform, properties, starting_ff_parameters,
-        sim_parameters, minimize=True)
+        starting_sim_parameters, minimize=True)
     openmm_ramd_helper.write_conformations_to_pdb(
         simulation, 1, steps_between_structures,
         structure_basename=starting_structure_name(replica_index),
         rec_indices=ramd_parameters.get("receptor_indices", []),
     )
+    pdb = openmm_ramd_helper.openmm_app.PDBFile(
+        starting_structure_name(replica_index))
+    simulation.context.setPositions(pdb.positions)
+    state = simulation.context.getState(
+        getPositions=True, getVelocities=True, enforcePeriodicBox=True)
+    with open(starting_state_name(replica_index), "w") as f:
+        f.write(openmm_ramd_helper.openmm.XmlSerializer.serialize(state))
 
 def ensure_starting_structures(
         ff_parameters,
@@ -63,7 +75,8 @@ def ensure_starting_structures(
         cuda_device_index="0",
         ):
     for replica_index in range(num_replicas):
-        if os.path.exists(starting_structure_name(replica_index)):
+        if os.path.exists(starting_structure_name(replica_index)) \
+                and os.path.exists(starting_state_name(replica_index)):
             continue
         print("Generating starting structure", replica_index)
         generate_starting_structure(
@@ -103,6 +116,7 @@ def run_ramd_trajectory(
         replica_index,
         trajectory_index,
         cuda_device_index="0",
+        print_completion=True,
         ):
     ramd_log_filename = f"ramd_{replica_index}_{trajectory_index}.log"
     trajectory_filename = None
@@ -118,6 +132,7 @@ def run_ramd_trajectory(
             ramd_log_filename=ramd_log_filename,
             cuda_device_index=cuda_device_index,
             trajectory_filename=trajectory_filename,
+            starting_state_name=starting_state_name(replica_index),
             )
         pdb_filename = ff_parameters["pdb_filename"]
         traj = mdtraj.load(pdb_filename)
@@ -131,7 +146,8 @@ def run_ramd_trajectory(
         traj.xyz = traj.xyz.astype(np.float32)
         traj.image_molecules(inplace=True, anchor_molecules=atom_set_list)
         traj.save(f"ramd_frames_{replica_index}_{trajectory_index}.dcd")
-        print("Completed simulation, now on to simulation", replica_index+1, trajectory_index+1)
+        if print_completion:
+            print("Completed simulation, now on to simulation", replica_index+1, trajectory_index+1)
     else:
         print(f"Skipping simulation {replica_index} {trajectory_index} with output file "
               f"{ramd_log_filename}. Already completed.")
@@ -163,12 +179,16 @@ def run_swarm_iterative(parameter_file, cuda_device_index="0"):
         ensure_starting_structures(
             ff_parameters, sim_parameters, ramd_parameters, num_replicas,
             steps_between_structures, cuda_device_index=cuda_device_index)
+        final_replica_index = max(replica_counts)
         for replica_index, num_trajectories in replica_counts.items():
             for trajectory_index in range(num_trajectories):
                 run_ramd_trajectory(
                     ff_parameters, sim_parameters, ramd_parameters,
                     replica_index, trajectory_index,
-                    cuda_device_index=cuda_device_index)
+                    cuda_device_index=cuda_device_index,
+                    print_completion=not (
+                        replica_index == final_replica_index
+                        and trajectory_index == num_trajectories - 1))
         
         ramd_log_files = get_ramd_log_files(replica_counts)
         replica_results, tau_comp, SD_comp, avg_SD_r, SD_replicas \
