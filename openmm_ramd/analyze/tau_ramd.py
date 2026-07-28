@@ -171,12 +171,24 @@ if __name__ == "__main__":
         "be considered by the parser. If set to True, this flag will cause "\
         "the times of even the unfinished trajectories to be counted. "\
         "Default: False.", action="store_true")
+    argparser.add_argument(
+        "--pool", action="store_true",
+        help="Pool trajectories from all replicas before bootstrapping.")
     
     args = argparser.parse_args()
     args = vars(args)
     ramd_log_files = args["ramd_log_files"]
     include_all_times = args["include_all_times"]
-    
-    replica_results, tau_comp, SD_comp, avg_SD_r, SD_replicas \
-        = tau_ramd_replicas(ramd_log_files, include_all_times)
-    print_tau_ramd_results(replica_results, tau_comp, SD_comp, avg_SD_r, SD_replicas)
+    if args["pool"]:
+        tau_median, tau_mean, t_r, SD_r, num_exits, num_sims = tau_ramd(
+            ramd_log_files, include_all_times)
+        print(f"Pooled: {num_exits} of {num_sims} trajectories exited successfully.")
+        print("tau_median (residence time):", tau_median, "ps")
+        print("tau mean (residence time):", tau_mean, "ps")
+        print("t_r (median interim residence time):", t_r, "ps")
+        print("SD_r (interim residence time standard deviation):", SD_r, "ps")
+    else:
+        replica_results, tau_comp, SD_comp, avg_SD_r, SD_replicas \
+            = tau_ramd_replicas(ramd_log_files, include_all_times)
+        print_tau_ramd_results(
+            replica_results, tau_comp, SD_comp, avg_SD_r, SD_replicas)
