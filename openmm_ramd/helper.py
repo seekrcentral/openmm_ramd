@@ -101,10 +101,16 @@ def make_system_from_amber_inputs(
     if pressure is not None:
         pressure = pressure * unit.bar
     #time_step = parameters["time_step"] * unit.picoseconds
-    hydrogen_mass = sim_parameters.get("hydrogen_mass", None) * unit.daltons
-    system = prmtop.createSystem(
-        nonbondedMethod=openmm_app.PME, nonbondedCutoff=nonbonded_cutoff,
-        constraints=openmm_app.HBonds, hydrogenMass=hydrogen_mass,)
+    hydrogen_mass = sim_parameters.get("hydrogen_mass")
+    if hydrogen_mass is None:
+        system = prmtop.createSystem(
+            nonbondedMethod=openmm_app.PME, nonbondedCutoff=nonbonded_cutoff,
+            constraints=openmm_app.HBonds)
+    else:
+        system = prmtop.createSystem(
+            nonbondedMethod=openmm_app.PME, nonbondedCutoff=nonbonded_cutoff,
+            constraints=openmm_app.HBonds,
+            hydrogenMass=hydrogen_mass * unit.daltons)
     if pressure:
         barostat = openmm.MonteCarloBarostat(pressure, temperature, 25)
         system.addForce(barostat)
