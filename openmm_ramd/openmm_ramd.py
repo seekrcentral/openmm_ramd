@@ -399,8 +399,8 @@ class RAMDSimulation(openmm_app.Simulation):
         # Obtain positions for either a possible force update or position print
         if (self.counter % self.force_out_freq == 0) \
                 or (self.counter % self.position_print_freq == 0):
-            state = self.context.getState(getPositions = True)
-            positions = state.getPositions(asNumpy=True)
+            #state = self.context.getState(getPositions = True)
+            #positions = state.getPositions(asNumpy=True)
             #lig_com = self.get_lig_com(positions)
             lig_com = self.get_lig_com_from_integrator()
             if self.force_handler.receptor_atom_indices is not None:
