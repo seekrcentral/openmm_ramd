@@ -392,6 +392,8 @@ class RAMDSimulation(openmm_app.Simulation):
     def RAMD_step(
             self, 
             numSteps=50):
+        # Refresh COMs on the final step, before the RAMD checks.
+        self.integrator.setGlobalVariableByName("com_steps_remaining", numSteps)
         self.step(numSteps)
         if not self.checked_atom_counts:
             self.check_atom_count()

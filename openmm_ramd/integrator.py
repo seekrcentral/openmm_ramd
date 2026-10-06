@@ -43,6 +43,7 @@ class RamdIntegrator(openmm.CustomIntegrator):
     def prepare_com_com_calc(self):
         # Add global variables for COM-COM calc
         self.addGlobalVariable("step_count", 0)
+        self.addGlobalVariable("com_steps_remaining", 0)
         self.addGlobalVariable("lig_mass", 0)
         self.addGlobalVariable("lig_weighted_x", 0)
         self.addGlobalVariable("lig_weighted_y", 0)
@@ -127,6 +128,8 @@ class RamdIntegrator(openmm.CustomIntegrator):
                         "only. It may not be used as an actual integrator.")
         
     def perform_com_com_calculation(self):
+        self.addComputeGlobal("com_steps_remaining", "max(0, com_steps_remaining-1)")
+        self.beginIfBlock("com_steps_remaining = 0")
         self.addComputeSum("lig_weighted_x", "is_lig_atom * m * _x(x)")
         self.addComputeSum("lig_weighted_y", "is_lig_atom * m * _y(x)")
         self.addComputeSum("lig_weighted_z", "is_lig_atom * m * _z(x)")
@@ -144,6 +147,7 @@ class RamdIntegrator(openmm.CustomIntegrator):
                                     " (lig_com_x-rec_com_x)^2+"\
                                     +"(lig_com_y-rec_com_y)^2+"\
                                     +"(lig_com_z-rec_com_z)^2")
+        self.endBlock()
         self.addComputeGlobal("step_count", "step_count + 1")
         return
     
