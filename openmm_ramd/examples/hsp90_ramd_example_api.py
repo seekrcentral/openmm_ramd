@@ -9,7 +9,6 @@ from sys import stdout
 import simtk.openmm.app as app
 import simtk.openmm as mm
 import simtk.unit as unit
-import parmed
 import mdtraj
 import numpy as np
 
@@ -83,7 +82,6 @@ RAMD_max_distance = 1.5 * unit.nanometer
 
 prmtop = app.AmberPrmtopFile(prmtop_filename)
 mypdb = app.PDBFile(input_pdb_file)
-pdb_parmed = parmed.load_file(input_pdb_file)
 box_vectors = (mypdb.topology).getPeriodicBoxVectors()
 
 assert box_vectors is not None, "No box vectors "\
