@@ -13,11 +13,12 @@ import mdtraj
 
 import openmm_ramd.helper as openmm_ramd_helper
 
-DEFAULT_STEPS_BETWEEN_STRUCTURES = 1000000
+DEFAULT_STEPS_BETWEEN_STRUCTURES = 2500000
 
 def run_swarm(
         parameter_file: str,
         cuda_device_index: str | None = "0",
+        use_xml_restarts: bool = False,
         ):
     with open(parameter_file) as f:
         parameters = json.load(f)
@@ -26,12 +27,20 @@ def run_swarm(
     sim_parameters = parameters.get("sim_parameters", {})
     ramd_parameters = parameters.get("ramd_parameters", {})
 
-    num_starting_structures = ramd_parameters.get("num_starting_structures", 0)
+    num_starting_structures = ramd_parameters.get("num_starting_structures", 5)
     steps_between_structures = ramd_parameters.get("steps_between_structures", 
                                                    DEFAULT_STEPS_BETWEEN_STRUCTURES)
-    num_velocity_restarts = ramd_parameters.get("num_velocity_restarts", 1)
+    num_velocity_restarts = ramd_parameters.get("num_velocity_restarts", 15)
 
-    if num_starting_structures > 0:
+    if use_xml_restarts:
+        from openmm_ramd.examples.run_swarm_fixed import ensure_starting_structures
+
+        ensure_starting_structures(
+            ff_parameters, sim_parameters, ramd_parameters,
+            num_starting_structures, steps_between_structures,
+            cuda_device_index=cuda_device_index)
+        structure_names = [f"starting_{i}.pdb" for i in range(num_starting_structures)]
+    elif num_starting_structures > 0:
         starting_names_glob = os.path.join("starting_*.pdb")
         if len(glob.glob(starting_names_glob)) >= num_starting_structures:
             print("Starting structures already exist - not regenerating.")
@@ -67,7 +76,8 @@ def run_swarm(
                     minimize=False,
                     ramd_log_filename=ramd_log_filename,
                     cuda_device_index=cuda_device_index,
-                    trajectory_filename=trajectory_filename
+                    trajectory_filename=trajectory_filename,
+                    starting_state_name=f"starting_{i}.xml" if use_xml_restarts else None,
                     )
                 # Save the frames
                 pdb_filename = ff_parameters["pdb_filename"]
@@ -102,8 +112,13 @@ if __name__ == "__main__":
         "indices, simply enter comma separated indices. Example: '0,1'. "\
         "If a value is not supplied, '0' will be used by default.", type=str)
     
+    argparser.add_argument(
+        "-u", "--use-xml-restarts", action="store_true",
+        help="Use saved PDB/XML replica states, generating missing pairs with "
+        "separate conventional MD runs.")
+
     args = argparser.parse_args()
     args = vars(args)
     parameter_file = args["parameter_file"]
     cuda_device_index = args["cuda_device_index"]
-    run_swarm(parameter_file, cuda_device_index)
+    run_swarm(parameter_file, cuda_device_index, args["use_xml_restarts"])

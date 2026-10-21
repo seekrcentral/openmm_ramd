@@ -392,6 +392,8 @@ class RAMDSimulation(openmm_app.Simulation):
     def RAMD_step(
             self, 
             numSteps=50):
+        # Refresh COMs on the final step, before the RAMD checks.
+        self.integrator.setGlobalVariableByName("com_steps_remaining", numSteps)
         self.step(numSteps)
         if not self.checked_atom_counts:
             self.check_atom_count()
@@ -399,8 +401,8 @@ class RAMDSimulation(openmm_app.Simulation):
         # Obtain positions for either a possible force update or position print
         if (self.counter % self.force_out_freq == 0) \
                 or (self.counter % self.position_print_freq == 0):
-            state = self.context.getState(getPositions = True)
-            positions = state.getPositions(asNumpy=True)
+            #state = self.context.getState(getPositions = True)
+            #positions = state.getPositions(asNumpy=True)
             #lig_com = self.get_lig_com(positions)
             lig_com = self.get_lig_com_from_integrator()
             if self.force_handler.receptor_atom_indices is not None:
