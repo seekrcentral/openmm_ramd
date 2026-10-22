@@ -3,139 +3,81 @@ Run a RAMD simulation straight from an AMBER parm file and PDB file.
 """
 
 import argparse
-import time
-from sys import stdout
-
-import openmm.app as app
-import openmm as mm
 import openmm.unit as unit
 
-import openmm_ramd.openmm_ramd as ramd
-import openmm_ramd.integrator as ramd_integrator
+import openmm_ramd.helper as helper
 import openmm_ramd.base as base
 
 def run_amber_RAMD(pdb_filename, prmtop_filename, rec_indices, lig_indices, 
-                   cuda_device_index=None, temperature=298.0, 
+                   cuda_device_index=None, temperature=300.0,
                    nonbonded_cutoff=1.0, target_pressure=None, time_step=0.002,
                    hydrogen_mass_amu=None,
                    ramd_force_magnitude=14.0, steps_per_RAMD_update=50,
-                   RAMD_cutoff_distance=0.0025, RAMD_max_distance=1.5,
+                   RAMD_cutoff_distance=0.0025, RAMD_max_distance=3.0,
                    max_travel=9e9,
                    ramd_log_filename="ramd.log", minimize=False,
-                   steps_per_energy_update=None, 
+                   steps_per_energy_update=25000,
                    steps_per_trajectory_update=None, trajectory_filename=None,
-                   max_num_steps=10000000, restraint_indices=None, 
-                   restraint_force_constant=None, position_print_freq=None,
-                   integrator_type="langevin", ramp_start_ns=0.0, ramp_force_increase_per_ns=0.0):
-    prmtop = app.AmberPrmtopFile(prmtop_filename)
-    mypdb = app.PDBFile(pdb_filename)
-    box_vectors = (mypdb.topology).getPeriodicBoxVectors()
-
-    assert box_vectors is not None, "No box vectors "\
-        "found in {}. ".format(pdb_filename) \
-        + "Box vectors for an anchor must be defined with a CRYST "\
-        "line within the PDB file."
-    
-    temperature = temperature * unit.kelvin
-    nonbonded_cutoff = nonbonded_cutoff * unit.nanometers
-    target_pressure = target_pressure * unit.bar
-    time_step = time_step * unit.picoseconds
-    ramd_force_magnitude = ramd_force_magnitude \
-        * unit.kilocalories_per_mole / unit.angstrom
-    RAMD_cutoff_distance = RAMD_cutoff_distance * unit.nanometers
-    RAMD_max_distance = RAMD_max_distance * unit.nanometers
-    max_travel = max_travel * unit.nanometers
-    ramp_force_increase_per_ns = ramp_force_increase_per_ns * unit.kilocalories_per_mole / unit.angstrom
-
-    if hydrogen_mass_amu:
-        system = prmtop.createSystem(
-            nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
-            constraints=app.HBonds, hydrogenMass=hydrogen_mass_amu*unit.amu)
-    else:
-        system = prmtop.createSystem(
-            nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
-            constraints=app.HBonds)
-        
-    if target_pressure:
-        barostat = mm.MonteCarloBarostat(target_pressure, temperature, 25)
-        system.addForce(barostat)
-    
-    if integrator_type == "langevin":
-        integrator = ramd_integrator.RamdLangevinIntegrator(
-            temperature, 1/unit.picosecond, time_step, lig_indices, rec_indices, 
-            mypdb.positions)
-            
-    elif integrator_type == "brownian":
-        integrator = ramd_integrator.RamdBrownianIntegrator(
-            temperature, 1/unit.picosecond, time_step, lig_indices, rec_indices, 
-            mypdb.positions)
-    else:
-        raise Exception(f"Integrator type not supported: {integrator_type}")
-    
-    platform = mm.Platform.getPlatformByName('CUDA')
+                   max_num_steps=20000000, restraint_indices=None,
+                   restraint_force_constant=None, position_print_freq=50,
+                   integrator_type="langevin", ramp_start_ns=0.0, ramp_force_increase_per_ns=0.0,
+                   *, friction_coeff=1.0, random_seed=0, collision_frequency=1.0,
+                   chain_length=3, num_mts=3, num_yoshida_suzuki=7,
+                   starting_state_name=None):
     if cuda_device_index is None:
         cuda_device_index = "0"
-    properties = {"CudaDeviceIndex": cuda_device_index, "CudaPrecision": "mixed"}
-    
-    # Impose restraints
-    print("restraining receptor atoms")
-    if restraint_indices is None:
-        restraint_indices = rec_indices
-    
-    if restraint_force_constant is None:
-        restraint_force_constant = 1.0
-    
-    restraint_force_constant *= unit.kilocalories_per_mole / unit.angstrom**2
-    
-    print("restraint_indices:", restraint_indices)
-    base.impose_receptor_restraints(
-        system, mypdb.positions, restraint_force_constant, restraint_indices)
-    
-    if position_print_freq:
-        ramd_steps = min(steps_per_RAMD_update, position_print_freq)
-    else:
-        ramd_steps = steps_per_RAMD_update
-    
-    simulation = ramd.RAMDSimulation(
-        prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
-        rec_indices, ramd_steps=ramd_steps, 
-        r_min_ramd=RAMD_cutoff_distance, 
-        force_out_freq=steps_per_RAMD_update, 
-        max_dist=RAMD_max_distance, max_travel=max_travel,
-        platform=platform, properties=properties, log_file_name=ramd_log_filename,
-        position_print_freq=position_print_freq,
-        ramp_start_ns=ramp_start_ns, ramp_force_increase_per_ns=ramp_force_increase_per_ns)
-    
-    simulation.context.setPositions(mypdb.positions)
-    simulation.context.setPeriodicBoxVectors(*box_vectors)
-    if minimize:
-        simulation.minimizeEnergy()
-        
-    simulation.context.setVelocitiesToTemperature(temperature)
-    if steps_per_energy_update is not None:
-        simulation.reporters.append(app.StateDataReporter(stdout, steps_per_energy_update, step=True,
-                potentialEnergy=True, temperature=True, volume=True))
-    if steps_per_trajectory_update is not None:
-        assert trajectory_filename is not None, \
-            "trajectory_filename must be assigned if "\
-            "'steps_per_trajectory_update' is not None"
-        dcd_reporter = app.DCDReporter(
-            trajectory_filename, steps_per_trajectory_update)
-        simulation.reporters.append(dcd_reporter)
-    else:
-        assert trajectory_filename is None, \
-            "trajectory_filename cannot be assigned if "\
-            "'steps_per_trajectory_update' is None"
-        
-    start_time = time.time()
-    step_counter = simulation.run_RAMD_sim(max_num_steps=max_num_steps)
-    
-    total_time = time.time() - start_time
-    simulation_in_ns = step_counter * time_step.value_in_unit(unit.picoseconds) * 1e-3
-    total_time_in_days = total_time / (86400.0)
-    ns_per_day = simulation_in_ns / total_time_in_days
-    print("RAMD benchmark:", ns_per_day, "ns/day")
-    return
+    restraint_strength = None
+    if restraint_force_constant is not None:
+        restraint_strength = (
+            restraint_force_constant * unit.kilocalories_per_mole / unit.angstrom**2
+        ).value_in_unit(unit.kilojoules_per_mole / unit.nanometer**2)
+    ff_parameters = {
+        "type": "amber",
+        "prmtop_filename": prmtop_filename,
+        "pdb_filename": pdb_filename,
+    }
+    sim_parameters = {
+        "temperature": temperature,
+        "nonbonded_cutoff": nonbonded_cutoff,
+        "pressure": target_pressure,
+        "time_step": time_step,
+        "hydrogen_mass": hydrogen_mass_amu or None,
+        "integrator_type": integrator_type,
+        "friction_coeff": friction_coeff,
+        "random_seed": random_seed,
+        "collision_frequency": collision_frequency,
+        "chain_length": chain_length,
+        "num_mts": num_mts,
+        "num_yoshida_suzuki": num_yoshida_suzuki,
+        "restraint_indices": restraint_indices,
+        "restraint_force_constant": restraint_strength,
+        "steps_per_energy_update": steps_per_energy_update,
+        "steps_per_trajectory_update": steps_per_trajectory_update,
+    }
+    ramd_parameters = {
+        "receptor_indices": rec_indices,
+        "ligand_indices": lig_indices,
+        "ramd_force_magnitude": ramd_force_magnitude,
+        "steps_per_RAMD_update": steps_per_RAMD_update,
+        "RAMD_cutoff_distance": RAMD_cutoff_distance,
+        "RAMD_max_distance": RAMD_max_distance,
+        "max_travel": max_travel,
+        "max_num_steps": max_num_steps,
+        "position_print_freq": position_print_freq,
+        "ramp_start_ns": ramp_start_ns,
+        "ramp_force_increase_per_ns": ramp_force_increase_per_ns,
+    }
+    helper.simulate_ramd(
+        ff_parameters=ff_parameters,
+        sim_parameters=sim_parameters,
+        ramd_parameters=ramd_parameters,
+        starting_structure_name=pdb_filename,
+        minimize=minimize,
+        ramd_log_filename=ramd_log_filename,
+        cuda_device_index=cuda_device_index,
+        trajectory_filename=trajectory_filename,
+        starting_state_name=starting_state_name,
+    )
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description=__doc__)
@@ -150,9 +92,12 @@ if __name__ == "__main__":
         "or a .prmtop file.")
     
     argparser.add_argument(
-        "receptor_indices", metavar="RECEPTOR_INDICES", type=str,
-        help="A comma-separated list of integers defining site within the "\
-        "pdb_filename structure. Ex: -r '1,2,0'.")
+        "receptor_indices", metavar="RECEPTOR_INDICES", type=str, nargs="?",
+        help="Comma-separated receptor atom indices; alternatively use -r/--receptor_indices.")
+    argparser.add_argument(
+        "-r", "--receptor_indices", dest="receptor_indices_option",
+        metavar="RECEPTOR_INDICES", type=str,
+        help="A comma-separated list of receptor atom indices. Ex: -r '1,2,0'.")
     argparser.add_argument(
         "-l", "--ligand_indices", dest="ligand_indices", 
         metavar="LIGAND_INDICES", type=str, default="",
@@ -172,16 +117,15 @@ if __name__ == "__main__":
         "indices, simply enter comma separated indices. Example: '0,1'. "\
         "If a value is not supplied, '0' will be used by default.", type=str)
     argparser.add_argument(
-        "-T", "--temperature", dest="temperature", default=298.0,
-        help="Temperature (in Kelvin). Default: 298.0.", type=float)
+        "-T", "--temperature", dest="temperature", default=300.0,
+        help="Temperature (in Kelvin). Default: 300.0.", type=float)
     argparser.add_argument(
         "-n", "--nonbonded_cutoff", dest="nonbonded_cutoff", default=1.0,
         help="Nonbonded cutoff (in nanometers). Default: 1.0.", type=float)
     argparser.add_argument(
         "-P", "--target_pressure", dest="target_pressure", default=None,
-        help="Target pressure (in bar) for constant pressure simulations. "\
-        "If set to None, simulation will not use constant pressure, but "\
-        "rather constant volume. Default: None.", type=float)
+        help="Target pressure (in bar). Use 'none' for constant volume. Default: None.",
+        type=lambda value: None if value.lower() == "none" else float(value))
     argparser.add_argument(
         "-t", "--time_step", dest="time_step", default=0.002,
         help="Time step to use for simulations (in picoseconds). "\
@@ -200,10 +144,10 @@ if __name__ == "__main__":
         "travel, relative to the receptor, otherwise the force is changed. "\
         "Default: 0.0025.", type=float)
     argparser.add_argument(
-        "-D", "--ramd_max_distance", dest="ramd_max_distance", default=2.5,
+        "-D", "--ramd_max_distance", dest="ramd_max_distance", default=3.0,
         help="The distance that the ligand must move away from the receptor "\
         "in order for the simulation to end with an escape event. "\
-        "Default: 2.5.", type=float)
+        "Default: 3.0.", type=float)
     argparser.add_argument(
         "-R", "--ramd_log_filename", dest="ramd_log_filename", 
         default="ramd.log", help="The name of the log file to write RAMD "\
@@ -215,10 +159,10 @@ if __name__ == "__main__":
         "Use this argument to activate minimization. Default: False.", 
         action="store_true")
     argparser.add_argument(
-        "-e", "--steps_per_energy_update", dest="steps_per_energy_update", 
-        default=None, help="The number of steps between reports to the system "\
-        "energy, volume, and other information. If set to None, then this "\
-        "information will not be printed. Default: None.", type=int)
+        "-e", "--steps_per_energy_update", dest="steps_per_energy_update",
+        default=25000, help="Steps between energy/volume reports. "
+        "Use 'none' to disable. Default: 25000.",
+        type=lambda value: None if value.lower() == "none" else int(value))
     argparser.add_argument(
         "-u", "--steps_per_trajectory_update", 
         dest="steps_per_trajectory_update", default=None, 
@@ -230,17 +174,71 @@ if __name__ == "__main__":
         "-U", "--trajectory_filename", dest="trajectory_filename", default=None, 
         help="The name of the trajectory file to be written if "\
         "'steps_per_trajectory_update' is not set to None. Default: None.", 
-        type=int)
+        type=str)
     argparser.add_argument(
-        "-M", "--max_num_steps", dest="max_num_steps", default=10000000, 
+        "-M", "--max_num_steps", dest="max_num_steps", default=20000000,
         help="The number of steps, maximum, for the RAMD simulation. "\
-        "Default: 10000000.", type=int)
+        "Default: 20000000.", type=int)
     
+    argparser.add_argument(
+        "--integrator_type", default="langevin",
+        choices=["langevin", "brownian", "verlet", "nose_hoover"],
+        help="RAMD integrator. Default: langevin.")
+    argparser.add_argument(
+        "--friction_coeff", type=float, default=1.0,
+        help="Langevin/Brownian friction (1/ps). Default: 1.0.")
+    argparser.add_argument(
+        "--random_seed", type=int, default=0,
+        help="Seed for velocity initialization and stochastic integration; 0 lets OpenMM choose.")
+    argparser.add_argument(
+        "--collision_frequency", type=float, default=1.0,
+        help="Nose-Hoover collision frequency (1/ps). Default: 1.0.")
+    argparser.add_argument(
+        "--chain_length", type=int, default=3,
+        help="Nose-Hoover chain length. Default: 3.")
+    argparser.add_argument(
+        "--num_mts", type=int, default=3,
+        help="Nose-Hoover thermostat substeps. Default: 3.")
+    argparser.add_argument(
+        "--num_yoshida_suzuki", type=int, default=7,
+        help="Nose-Hoover Yoshida-Suzuki terms. Default: 7.")
+    argparser.add_argument(
+        "--hydrogen_mass_amu", type=float, default=None,
+        help="Hydrogen mass for mass repartitioning (daltons). Default: unchanged.")
+    argparser.add_argument(
+        "--starting_state_name", default=None,
+        help="OpenMM State XML with positions, velocities, and box vectors; use a matching PDB.")
+    argparser.add_argument(
+        "--restraint_indices", default=None,
+        help="Comma-separated restrained atom indices. Default: no restraints.")
+    argparser.add_argument(
+        "--restraint_force_constant", type=float, default=None,
+        help="Restraint strength (kcal/mol/angstrom**2); required when restraint indices are supplied.")
+    argparser.add_argument(
+        "--position_print_freq", type=int, default=50,
+        help="Steps between COM position log entries. Default: 50.")
+    argparser.add_argument(
+        "--max_travel", type=float, default=9e9,
+        help="Maximum travel before changing force direction (nm). Default: 9e9.")
+    argparser.add_argument(
+        "--ramp_start_ns", type=float, default=0.0,
+        help="Start time for force ramping (ns). Default: 0.0.")
+    argparser.add_argument(
+        "--ramp_force_increase_per_ns", type=float, default=0.0,
+        help="Force increase in (kcal/mol/angstrom)/ns. Default: 0.0 (constant force).")
+
     args = argparser.parse_args()
     args = vars(args)
     pdb_filename = args["pdb_filename"]
     prmtop_filename = args["prmtop_filename"]
     rec_indices = args["receptor_indices"]
+    receptor_indices_option = args["receptor_indices_option"]
+    if rec_indices is not None and receptor_indices_option is not None:
+        argparser.error("Supply receptor indices either positionally or with -r/--receptor_indices, not both.")
+    if receptor_indices_option is not None:
+        rec_indices = receptor_indices_option
+    if rec_indices is None:
+        argparser.error("Receptor indices are required, positionally or with -r/--receptor_indices.")
     if rec_indices != "":
         rec_indices = base.initialize_indices(rec_indices)
     else:
@@ -268,7 +266,10 @@ if __name__ == "__main__":
     trajectory_filename = args["trajectory_filename"]
     max_num_steps = args["max_num_steps"]
     
-    # TODO: Handle ligand and receptor indices
+    restraint_indices = args["restraint_indices"]
+    if restraint_indices is not None:
+        restraint_indices = (base.initialize_indices(restraint_indices)
+                             if restraint_indices else [])
     
     if lig_indices is None:
         assert lig_resname != "", \
@@ -292,4 +293,19 @@ if __name__ == "__main__":
                    steps_per_energy_update=steps_per_energy_update, 
                    steps_per_trajectory_update=steps_per_trajectory_update, 
                    trajectory_filename=trajectory_filename,
-                   max_num_steps=max_num_steps)
+                   max_num_steps=max_num_steps,
+                   integrator_type=args["integrator_type"],
+                   friction_coeff=args["friction_coeff"],
+                   random_seed=args["random_seed"],
+                   collision_frequency=args["collision_frequency"],
+                   chain_length=args["chain_length"],
+                   num_mts=args["num_mts"],
+                   num_yoshida_suzuki=args["num_yoshida_suzuki"],
+                   hydrogen_mass_amu=args["hydrogen_mass_amu"],
+                   starting_state_name=args["starting_state_name"],
+                   restraint_indices=restraint_indices,
+                   restraint_force_constant=args["restraint_force_constant"],
+                   position_print_freq=args["position_print_freq"],
+                   max_travel=args["max_travel"],
+                   ramp_start_ns=args["ramp_start_ns"],
+                   ramp_force_increase_per_ns=args["ramp_force_increase_per_ns"])
