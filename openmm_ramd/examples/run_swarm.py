@@ -15,6 +15,69 @@ import openmm_ramd.helper as openmm_ramd_helper
 
 DEFAULT_STEPS_BETWEEN_STRUCTURES = 2500000
 
+def starting_structure_name(replica_index):
+    return f"starting_{replica_index}.pdb"
+
+def starting_state_name(replica_index):
+    return f"starting_{replica_index}.xml"
+
+def generate_starting_structure(
+        ff_parameters,
+        sim_parameters,
+        ramd_parameters,
+        replica_index,
+        steps_between_structures,
+        cuda_device_index="0",
+        ):
+    starting_ff_parameters = dict(ff_parameters)
+    starting_sim_parameters = dict(sim_parameters)
+    random_seed = starting_sim_parameters.get("random_seed", 0)
+    if random_seed != 0:
+        starting_sim_parameters["random_seed"] = random_seed + replica_index
+
+    openmm_ramd_helper.validate_sim_parameters(starting_sim_parameters)
+    openmm_ramd_helper.validate_ramd_parameters(ramd_parameters)
+    topology, system = openmm_ramd_helper.choose_topology_system_from_params(
+        starting_ff_parameters, starting_sim_parameters)
+    integrator = openmm_ramd_helper.choose_conventional_integrator(
+        starting_sim_parameters)
+    platform, properties = openmm_ramd_helper.choose_platform_and_properties(
+        cuda_device_index)
+    openmm_ramd_helper.add_restraints_to_system(
+        system, starting_ff_parameters, starting_sim_parameters)
+    simulation = openmm_ramd_helper.make_conventional_simulation(
+        topology, system, integrator, platform, properties, starting_ff_parameters,
+        starting_sim_parameters, minimize=True)
+    openmm_ramd_helper.write_conformations_to_pdb(
+        simulation, 1, steps_between_structures,
+        structure_basename=starting_structure_name(replica_index),
+        rec_indices=ramd_parameters.get("receptor_indices", []),
+    )
+    pdb = openmm_ramd_helper.openmm_app.PDBFile(
+        starting_structure_name(replica_index))
+    simulation.context.setPositions(pdb.positions)
+    state = simulation.context.getState(
+        getPositions=True, getVelocities=True, enforcePeriodicBox=True)
+    with open(starting_state_name(replica_index), "w") as f:
+        f.write(openmm_ramd_helper.openmm.XmlSerializer.serialize(state))
+
+def ensure_starting_structures(
+        ff_parameters,
+        sim_parameters,
+        ramd_parameters,
+        num_replicas,
+        steps_between_structures,
+        cuda_device_index="0",
+        ):
+    for replica_index in range(num_replicas):
+        if os.path.exists(starting_structure_name(replica_index)) \
+                and os.path.exists(starting_state_name(replica_index)):
+            continue
+        print("Generating starting structure", replica_index)
+        generate_starting_structure(
+            ff_parameters, sim_parameters, ramd_parameters, replica_index,
+            steps_between_structures, cuda_device_index=cuda_device_index)
+
 def run_swarm(
         parameter_file: str,
         cuda_device_index: str | None = "0",
@@ -33,8 +96,6 @@ def run_swarm(
     num_velocity_restarts = ramd_parameters.get("num_velocity_restarts", 15)
 
     if use_xml_restarts:
-        from openmm_ramd.examples.run_swarm_fixed import ensure_starting_structures
-
         ensure_starting_structures(
             ff_parameters, sim_parameters, ramd_parameters,
             num_starting_structures, steps_between_structures,
