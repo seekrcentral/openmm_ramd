@@ -313,8 +313,9 @@ class RAMDSimulation(openmm_app.Simulation):
                 f"{self.position_print_freq}")
             self.logger.log("timeStep                 "\
                 f"{self.integrator.getStepSize()}")
-            self.logger.log("temperature              "\
-                f"{self.integrator.getTemperature()}")
+            if hasattr(self.integrator, "getTemperature"):
+                self.logger.log("temperature              "
+                    f"{self.integrator.getTemperature()}")
             self.logger.log("protAtoms                "\
                 f"{self.force_handler.receptor_atom_indices}")
             self.logger.log("ligAtoms                 "\
