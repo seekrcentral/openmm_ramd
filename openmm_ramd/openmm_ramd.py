@@ -51,12 +51,12 @@ class RAMDSimulation(openmm_app.Simulation):
             ligand_atom_indices, 
             receptor_atom_indices=None, 
             ramd_steps=50, 
-            r_min_ramd=0.025, 
+            r_min_ramd=0.025 * unit.angstrom,
             force_out_freq=50, 
             md_steps=0, 
             md_start="no", 
             r_min_md=0, 
-            max_dist=50, 
+            max_dist=50 * unit.angstrom,
             debug_level=0, 
             platform=None, 
             properties=None, 
@@ -65,9 +65,9 @@ class RAMDSimulation(openmm_app.Simulation):
             ramd_seed=0, 
             align_receptor=False, 
             position_print_freq=None,
-            max_travel=9e9, 
-            ramp_start_ns=9e9, 
-            ramp_force_increase_per_ns=5.0):
+            max_travel=9e9 * unit.angstrom,
+            ramp_start_ns=0.0, 
+            ramp_force_increase_per_ns=0.0 * kcal_per_mole_per_angstrom):
         assert isinstance(integrator, ramd_integrator.RamdIntegrator), \
             "A RAMD simulation must use one of the available integrators in "\
             "the openmm_ramd.integrator module."
