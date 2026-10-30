@@ -4,7 +4,6 @@ generated from a conventional MD simulation.
 """
 
 import os
-import glob
 import json
 import argparse
 
@@ -102,10 +101,11 @@ def run_swarm(
             cuda_device_index=cuda_device_index)
         structure_names = [f"starting_{i}.pdb" for i in range(num_starting_structures)]
     elif num_starting_structures > 0:
-        starting_names_glob = os.path.join("starting_*.pdb")
-        if len(glob.glob(starting_names_glob)) >= num_starting_structures:
+        structure_names = [
+            starting_structure_name(i) for i in range(num_starting_structures)
+        ]
+        if all(os.path.exists(name) for name in structure_names):
             print("Starting structures already exist - not regenerating.")
-            structure_names = sorted(glob.glob(starting_names_glob))
         else:
             structure_names = openmm_ramd_helper.simulate_conventional(
                 ff_parameters=ff_parameters,
