@@ -44,7 +44,7 @@ def generate_starting_structure(
     platform, properties = openmm_ramd_helper.choose_platform_and_properties(
         cuda_device_index)
     openmm_ramd_helper.add_restraints_to_system(
-        system, starting_ff_parameters, starting_sim_parameters)
+        system, starting_ff_parameters["pdb_filename"], starting_sim_parameters)
     simulation = openmm_ramd_helper.make_conventional_simulation(
         topology, system, integrator, platform, properties, starting_ff_parameters,
         starting_sim_parameters, minimize=True)

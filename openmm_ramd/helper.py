@@ -281,10 +281,10 @@ def choose_platform_and_properties(
 
 def add_restraints_to_system(
         system: openmm.System,
-        ff_parameters: dict,
+        reference_pdb_filename: str,
         sim_parameters: dict,
         ) -> None:
-    pdb = openmm_app.PDBFile(ff_parameters["pdb_filename"])
+    pdb = openmm_app.PDBFile(reference_pdb_filename)
     if sim_parameters.get("restraint_indices", None) is not None:
         assert sim_parameters.get("restraint_force_constant", None) is not None, \
             "If sim_parameters has key 'restraint_indices', it should also have "\
@@ -509,7 +509,8 @@ def simulate_conventional(
     topology, system = choose_topology_system_from_params(ff_parameters, sim_parameters)
     integrator = choose_conventional_integrator(sim_parameters)
     platform, properties = choose_platform_and_properties(cuda_device_index)
-    add_restraints_to_system(system, ff_parameters, sim_parameters)
+    add_restraints_to_system(
+        system, ff_parameters["pdb_filename"], sim_parameters)
     simulation = make_conventional_simulation(
         topology, system, integrator, platform, properties, ff_parameters,
         sim_parameters, minimize)
@@ -542,7 +543,7 @@ def simulate_ramd(
     integrator = choose_ramd_integrator(
         sim_parameters, ramd_parameters, starting_positions, system=system)
     platform, properties = choose_platform_and_properties(cuda_device_index)
-    add_restraints_to_system(system, ff_parameters, sim_parameters)
+    add_restraints_to_system(system, starting_structure_name, sim_parameters)
     simulation = make_ramd_simulation(
         topology, system, integrator, platform, properties, ff_parameters,
         sim_parameters, ramd_parameters, starting_structure_name, minimize,
