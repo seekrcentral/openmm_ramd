@@ -123,7 +123,7 @@ def run_ramd_trajectory(
     if sim_parameters.get("steps_per_trajectory_update") is not None:
         trajectory_filename = f"ramd_trajectory_{replica_index}_{trajectory_index}.dcd"
     if openmm_ramd_helper.should_run(ramd_log_filename):
-        positions = openmm_ramd_helper.simulate_ramd(
+        positions, box_vectors = openmm_ramd_helper.simulate_ramd(
             ff_parameters=ff_parameters,
             sim_parameters=sim_parameters,
             ramd_parameters=ramd_parameters,
@@ -136,11 +136,8 @@ def run_ramd_trajectory(
             )
         pdb_filename = ff_parameters["pdb_filename"]
         traj = mdtraj.load(pdb_filename)
-        traj.xyz = np.array([positions[0]])
-        frame_traj = mdtraj.load(pdb_filename)
-        for k in range(1, len(positions)):
-            frame_traj.xyz = np.array([positions[k]])
-            traj = traj.join(frame_traj)
+        traj.xyz = np.asarray(positions, dtype=np.float32)
+        traj.unitcell_vectors = np.asarray(box_vectors, dtype=np.float32)
         receptor_indices = ramd_parameters["receptor_indices"]
         atom_set_list = [set(traj.topology.atom(i) for i in receptor_indices)]
         traj.xyz = traj.xyz.astype(np.float32)

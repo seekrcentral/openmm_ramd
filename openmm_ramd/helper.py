@@ -442,7 +442,7 @@ def run_ramd_sim(
         receptor_indices: list[int],
         max_num_steps: int,
         use_min_dist_rmsd_escape: bool = False,
-        ) -> tuple[int, list[np.ndarray]]:
+        ) -> tuple[int, list[np.ndarray], list[np.ndarray]]:
     simulation.counter = 0
     simulation.context.setTime(0.0)
     start_lig_prot_dist = simulation.RAMD_start()
@@ -452,6 +452,9 @@ def run_ramd_sim(
     state = simulation.context.getState(getPositions=True, enforcePeriodicBox=True)
     ref_positions = state.getPositions(asNumpy=True)
     positions_list = [ref_positions]
+    box_vectors = [
+        state.getPeriodicBoxVectors(asNumpy=True).value_in_unit(unit.nanometer)
+    ]
 
     while simulation.counter < max_num_steps:
         lig_prot_distance = simulation.RAMD_step(simulation.ramd_steps)
@@ -468,19 +471,22 @@ def run_ramd_sim(
         state = simulation.context.getState(getPositions=True, enforcePeriodicBox=True)
         final_positions = state.getPositions(asNumpy=True)
         positions_list.append(final_positions)
+        box_vectors.append(
+            state.getPeriodicBoxVectors(asNumpy=True).value_in_unit(unit.nanometer)
+        )
         
-    return simulation.counter, positions_list
+    return simulation.counter, positions_list, box_vectors
 
 def perform_ramd_simulation(
         simulation: ramd_simulation.RAMDSimulation,
         sim_parameters: dict,
         ramd_parameters: dict,
-        ) -> list[np.ndarray]:
+        ) -> tuple[list[np.ndarray], list[np.ndarray]]:
     time_step = sim_parameters["time_step"] * unit.picoseconds
     receptor_indices = ramd_parameters["receptor_indices"]
     max_num_steps = ramd_parameters["max_num_steps"]
     start_time = time.time()
-    step_counter, positions = run_ramd_sim(
+    step_counter, positions, box_vectors = run_ramd_sim(
         simulation, receptor_indices, max_num_steps=max_num_steps, 
         use_min_dist_rmsd_escape=False)
     total_time = time.time() - start_time
@@ -489,7 +495,7 @@ def perform_ramd_simulation(
     ns_per_day = simulation_in_ns / total_time_in_days
     print(f"simulation finished in {step_counter} steps")
     print("RAMD benchmark:", ns_per_day, "ns/day")
-    return positions
+    return positions, box_vectors
 
 def simulate_conventional(
         ff_parameters: dict,
@@ -531,7 +537,7 @@ def simulate_ramd(
         cuda_device_index: str | None = "0",
         trajectory_filename: str | None = None,
         starting_state_name: str | None = None,
-        ):
+        ) -> tuple[list[np.ndarray], list[np.ndarray]]:
     """
     Run a RAMD simulation using the specified parameters.
     """
@@ -550,7 +556,7 @@ def simulate_ramd(
         ramd_log_filename, trajectory_filename=trajectory_filename,
         starting_state_name=starting_state_name)
         
-    positions = perform_ramd_simulation(
+    positions, box_vectors = perform_ramd_simulation(
         simulation, sim_parameters, ramd_parameters)
 
-    return positions
+    return positions, box_vectors
