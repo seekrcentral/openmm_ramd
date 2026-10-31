@@ -11,6 +11,8 @@ Welcome to openmm_ramd's documentation!
    :caption: Contents:
 
    getting_started
+   run
+   analyze
    api
 
 

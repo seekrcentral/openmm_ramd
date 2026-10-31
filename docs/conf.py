@@ -23,9 +23,9 @@ import openmm_ramd
 # -- Project information -----------------------------------------------------
 
 project = 'openmm_ramd'
-copyright = ("2021, Lane Votapka. Project structure based on the "
+copyright = ("2021-2026, Lane Votapka and Anson Noland. Project structure based on the "
              "Computational Molecular Science Python Cookiecutter version 1.6")
-author = 'Lane Votapka'
+author = 'Lane Votapka and Anson Noland'
 
 # The short X.Y version
 version = ''
@@ -74,7 +74,7 @@ master_doc = 'index'
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = 'en'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
