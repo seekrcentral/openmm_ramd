@@ -15,6 +15,9 @@ the technique here:
 
 https://kbbox.h-its.org/toolbox/methods/molecular-simulation/random-acceleration-molecular-dynamics-ramd/
 
+<img width="800" height="600" alt="cmp_1_exit_arrow_last5s" src="https://github.com/user-attachments/assets/33393202-bd9b-49b4-90d5-513cf923bb90" />
+
+
 This package allows one to run RAMD using OpenMM, optionally generating
 an output log file that resemble the output produced by the NAMD version 
 of RAMD.
