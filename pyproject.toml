@@ -91,4 +91,9 @@ default-tag = "0.1.0"
 [tool.versioningit.write]
 file = "qmrebind/_version.py"
 
+[tool.pytest.ini_options]
+markers = [
+    "needs_cuda: requires a CUDA GPU; skip with -m 'not needs_cuda'",
+]
+
 

@@ -7,10 +7,16 @@ It is assumed to be running in the parent openmm_ramd/ folder.
 
 Activate the project environment first if needed:
 
-Run the default fast test suite:
+Run the default test suite:
 
 ```bash
 pytest openmm_ramd/tests
+```
+
+Some of the tests require CUDA. To skip CUDA-mandatory tests, run:
+
+```bash
+pytest -m "not needs_cuda"
 ```
 
 ## Useful verbosity and debugging options

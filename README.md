@@ -84,7 +84,7 @@ This runs a fixed amount of replicas and trajectories, defined in the parameters
 To replicate the iterative procedure used in most tau-RAMD publications, one can use run_swarm_iterative.py, which will add replicas (up to a maximum of 8) and trajectories when the standard deviation exceeds a given threshold:
 
 ```
-python run_swarm_iterative.py example_params.py
+python run_swarm_iterative.py example_params.json
 ```
 
 Alternatively, one might want to run a single RAMD simulation, which can be done with a Python script by using the functionality of run_amber_RAMD.py:

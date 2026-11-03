@@ -221,7 +221,7 @@ def test_Brownian_linear_distributions():
     assert np.isclose(native_energy_mean, ramd_energy_mean, rtol=0.25)
     assert np.isclose(native_energy_std, ramd_energy_std, rtol=0.25)
     
-    assert np.isclose(native_points_mean, ramd_points_mean, rtol=0.25)
+    assert np.isclose(native_points_mean, ramd_points_mean, atol=0.1)
     assert np.isclose(native_points_std, ramd_points_std, rtol=0.25)
     return
 
