@@ -7,6 +7,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+/openmm_ramd/_version.py
 .Python
 env/
 build/

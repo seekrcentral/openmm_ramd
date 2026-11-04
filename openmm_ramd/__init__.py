@@ -1,3 +1,3 @@
 """Implement random accelerated molecular dynamics (RAMD) in OpenMM."""
 
-__version__ = "{version}"
+from ._version import __version__
