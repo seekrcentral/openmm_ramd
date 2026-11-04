@@ -1,8 +1,13 @@
 Analysis
 ========
 
+Coming soon...
+
 Analyzing swarm results
 -----------------------
 
-Maximova analysis
------------------
+Ranking a set of binders
+------------------------
+
+Predicting absolute residence time with Maximova analysis
+---------------------------------------------------------

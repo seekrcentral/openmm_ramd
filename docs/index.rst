@@ -10,8 +10,10 @@ Welcome to openmm_ramd's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   getting_started
+   installation
+   tutorial
    run
+   parameters
    analyze
    api
 

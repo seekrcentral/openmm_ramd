@@ -1,21 +1,25 @@
-Usage
-=====
+Running RAMD simulations
+========================
 
-Running an iterative swarm
---------------------------
+Coming soon...
 
-Running a fixed swarm
----------------------
+Running a swarm of trajectories
+-------------------------------
+
+With iterative adding of replicas and trajectories
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+With a fixed number of replicas and trajectories
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Running a single trajectory
 ---------------------------
 
 From a python script
+~~~~~~~~~~~~~~~~~~~~
 
 From the CLI
+~~~~~~~~~~~~
 
-Using RAMD API in an OpenMM script
+Using the RAMD API in an OpenMM script
 ----------------------------------
-
-Parameters
-----------
