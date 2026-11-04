@@ -43,7 +43,7 @@ OpenMM is required for the molecular dynamics (MD).
 
 The easiest, quickest way to install the OpenMM is to use
 Conda. If you don't already have Conda installed, Download Conda with 
-Python version 3.10 from 
+Python version 3.10 or newer from 
 https://conda.io/en/latest/miniconda.html and run the downloaded script and 
 fill out the prompts. 
 
@@ -174,7 +174,7 @@ providing feedback, bug reports, or other comments.
 
 ### Copyright
 
-Copyright (c) 2021-2026, Lane Votapka and Anson Noland
+Copyright (c) 2026, Lane Votapka and Anson Noland
 
 
 #### Acknowledgements

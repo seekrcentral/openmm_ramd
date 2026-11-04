@@ -23,7 +23,7 @@ import openmm_ramd
 # -- Project information -----------------------------------------------------
 
 project = 'openmm_ramd'
-copyright = ("2021-2026, Lane Votapka and Anson Noland. Project structure based on the "
+copyright = ("2026, Lane Votapka and Anson Noland. Project structure based on the "
              "Computational Molecular Science Python Cookiecutter version 1.6")
 author = 'Lane Votapka and Anson Noland'
 
