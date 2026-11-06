@@ -226,7 +226,7 @@ class RAMDSimulation(openmm_app.Simulation):
         if positions is None:
             state = self.context.getState(getPositions = True)
             positions = state.getPositions(asNumpy=True)
-        
+
         if self.align_receptor and not skip_alignment:
             # Align by receptor positions
             self.align_positions_by_reference(
@@ -244,7 +244,7 @@ class RAMDSimulation(openmm_app.Simulation):
         if positions is None:
             state = self.context.getState(getPositions = True)
             positions = state.getPositions(asNumpy=True)
-        
+
         if self.align_receptor and not skip_alignment:
             # Align by receptor positions
             self.align_positions_by_reference(
@@ -406,6 +406,7 @@ class RAMDSimulation(openmm_app.Simulation):
             #positions = state.getPositions(asNumpy=True)
             #lig_com = self.get_lig_com(positions)
             lig_com = self.get_lig_com_from_integrator()
+
             if self.force_handler.receptor_atom_indices is not None:
                 #rec_com = self.get_rec_com(positions, skip_alignment=True)
                 rec_com = self.get_rec_com_from_integrator()
@@ -531,6 +532,7 @@ class RAMDSimulation(openmm_app.Simulation):
         while self.counter < max_num_steps:
             lig_prot_distance = self.RAMD_step(self.ramd_steps)
             if lig_prot_distance * unit.angstroms > self.max_dist:
+
                 self.max_distance_exceeded(self.counter)
                 successful_escape = True
                 break
