@@ -20,17 +20,17 @@ try:
     import openmm.unit as unit
 except ImportError:
     import simtk.openmm.unit as unit
-import parmed
 
 import openmm_ramd.openmm_ramd as openmm_ramd
-
+import openmm_ramd.integrator as ramd_integrator
 
 TEST_DIRECTORY = os.path.dirname(__file__)
 ROOT_DIRECTORY = os.path.join(TEST_DIRECTORY, "..")
 
 def make_openmm_ramd_simulation_object(
-        log_file_name=None, ramdSteps=10, rMinRamd=0.025, forceOutFreq=10, 
-        maxDist=12.0):
+        log_file_name=None, ramd_steps=10, r_min_ramd=0.025, force_out_freq=10, 
+        max_dist=12.0 * unit.angstroms):
+    time_step = 0.002 * unit.picoseconds
     temperature = 298.15 * unit.kelvin
     ramd_force_magnitude = 14.0 * unit.kilocalories_per_mole / unit.angstrom
     rec_indices = [569, 583, 605, 617, 1266, 1292, 1299, 1374, 1440, 1459, 1499,
@@ -42,25 +42,27 @@ def make_openmm_ramd_simulation_object(
     input_pdb_file = os.path.join(TEST_DIRECTORY, "../data/hsp90_INH.pdb")
     prmtop = openmm_app.AmberPrmtopFile(prmtop_filename)
     mypdb = openmm_app.PDBFile(input_pdb_file)
-    pdb_parmed = parmed.load_file(input_pdb_file)
-    assert pdb_parmed.box_vectors is not None, "No box vectors "\
+    box_vectors = (mypdb.topology).getPeriodicBoxVectors()
+
+    assert box_vectors is not None, "No box vectors "\
         "found in {}. ".format(input_pdb_file) \
         + "Box vectors for an anchor must be defined with a CRYST "\
         "line within the PDB file."
-    
-    box_vectors = pdb_parmed.box_vectors
     
     system = prmtop.createSystem(
         nonbondedMethod=openmm_app.PME, nonbondedCutoff=1.0*unit.nanometers,
         constraints=openmm_app.HBonds)
     
-    integrator = openmm.LangevinIntegrator(
-        temperature, 1/unit.picosecond, 0.002*unit.picoseconds)
+    #integrator = openmm.LangevinIntegrator(
+    #    temperature, 1/unit.picosecond, 0.002*unit.picoseconds)
+    integrator = ramd_integrator.RamdLangevinIntegrator(
+        temperature, 1/unit.picosecond, time_step, lig_indices, rec_indices, 
+        mypdb.positions)
     simulation = openmm_ramd.RAMDSimulation(
         prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
-        rec_indices, ramdSteps=ramdSteps, rMinRamd=rMinRamd, 
-        forceOutFreq=forceOutFreq, maxDist=maxDist,
-        logFileName=log_file_name)
+        rec_indices, ramd_steps=ramd_steps, r_min_ramd=r_min_ramd, 
+        force_out_freq=force_out_freq, max_dist=max_dist,
+        log_file_name=log_file_name, max_travel=9e9*unit.angstroms)
     
     simulation.context.setPositions(mypdb.positions)
     simulation.context.setPeriodicBoxVectors(*box_vectors)
@@ -82,8 +84,8 @@ def test_openmm_ramd_simulation():
 def test_openmm_run_RAMD_sim(tmp_path):
     log_file_name = os.path.join(tmp_path, "ramd.log")
     simulation = make_openmm_ramd_simulation_object(
-        log_file_name, ramdSteps=10, rMinRamd=0.025, forceOutFreq=10, 
-        maxDist=12.0)
+        log_file_name, ramd_steps=10, r_min_ramd=0.025*unit.angstroms, 
+        force_out_freq=10, max_dist=12.0*unit.angstroms)
     step_counter = simulation.run_RAMD_sim(max_num_steps=50)
     assert step_counter == 50
     assert os.path.exists(log_file_name)

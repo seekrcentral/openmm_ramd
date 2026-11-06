@@ -22,7 +22,8 @@ except ImportError:
     
 from openmm_ramd.base import kcal_per_mole_per_angstrom
 
-RAMD_FORCE_EXPRESSION = "-(f_x*x1 + f_y*y1 + f_z*z1)"
+RAMD_FORCE_EXPRESSION = "-magnitude*(f_x*x1 + f_y*y1 + f_z*z1)"
+RAMD_FORCE_EXPRESSION_RELATIVE = "-magnitude*(f_x*(x1-x2) + f_y*(y1-y2) + f_z*(z1-z2))"
 
 class RAMD_Force_Handler():
     """
@@ -54,32 +55,40 @@ class RAMD_Force_Handler():
             force = openmm.CustomCentroidBondForce(1, RAMD_FORCE_EXPRESSION)
             force.setForceGroup(self.force_group)
             self.group_index_lig = force.addGroup(self.ligand_atom_indices)
+            force.addGlobalParameter("magnitude", 0.0*kcal_per_mole_per_angstrom)
             force.addPerBondParameter("f_x")
             force.addPerBondParameter("f_y")
             force.addPerBondParameter("f_z")
             self.bond_index = force.addBond([self.group_index_lig], 
-                                            [0.0*kcal_per_mole_per_angstrom, 
-                                             0.0*kcal_per_mole_per_angstrom, 
-                                             0.0*kcal_per_mole_per_angstrom])
+                                            [0.0, 0.0, 0.0])
             
         else:
-            force = openmm.CustomCentroidBondForce(2, RAMD_FORCE_EXPRESSION)
+            force = openmm.CustomCentroidBondForce(2, RAMD_FORCE_EXPRESSION_RELATIVE)
             force.setForceGroup(self.force_group)
             self.group_index_lig = force.addGroup(self.ligand_atom_indices)
             self.group_index_rec = force.addGroup(self.receptor_atom_indices)
+            force.addGlobalParameter("magnitude", 0.0*kcal_per_mole_per_angstrom)
             force.addPerBondParameter("f_x")
             force.addPerBondParameter("f_y")
             force.addPerBondParameter("f_z")
             self.bond_index = force.addBond([self.group_index_lig, 
                                              self.group_index_rec], 
-                                            [0.0*kcal_per_mole_per_angstrom, 
-                                             0.0*kcal_per_mole_per_angstrom, 
-                                             0.0*kcal_per_mole_per_angstrom])
+                                            [0.0, 0.0, 0.0])
         self.force_object = force
-        self.force_vector = np.array([0.0*kcal_per_mole_per_angstrom, 
-                                      0.0*kcal_per_mole_per_angstrom, 
-                                      0.0*kcal_per_mole_per_angstrom])
+        self.force_vector = np.array([0.0, 0.0, 0.0]) \
+            * kcal_per_mole_per_angstrom
         self.random_vector = np.array([0.0, 0.0, 0.0])
+        return
+    
+    def set_new_RAMD_force_magnitude(self, new_force_magnitude, context):
+        old_force_magnitude = self.random_force_magnitude
+        self.random_force_magnitude = new_force_magnitude
+        if old_force_magnitude.value_in_unit(kcal_per_mole_per_angstrom) == 0.0:
+            self.force_vector = new_force_magnitude * self.random_vector
+        else:
+            self.force_vector *= (new_force_magnitude/old_force_magnitude)
+        context.setParameter("magnitude", new_force_magnitude)
+
         return
     
     def set_new_RAMD_force_vector(self):
@@ -94,9 +103,9 @@ class RAMD_Force_Handler():
             [f_gauss_x/f_gauss_len, f_gauss_y/f_gauss_len, 
              f_gauss_z/f_gauss_len])
         force_vector = force_vector_unscaled * self.random_force_magnitude
-        f_x = force_vector[0]
-        f_y = force_vector[1]
-        f_z = force_vector[2]
+        f_x = force_vector_unscaled[0]
+        f_y = force_vector_unscaled[1]
+        f_z = force_vector_unscaled[2]
         force = self.force_object
         if self.receptor_atom_indices is None \
                 or len(self.receptor_atom_indices) == 0:

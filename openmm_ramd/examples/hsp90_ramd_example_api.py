@@ -6,21 +6,18 @@ RAMD simulations.
 import time
 from sys import stdout
 
-import simtk.openmm.app as app
-import simtk.openmm as mm
-import simtk.unit as unit
-import parmed
-import mdtraj
-import numpy as np
+import openmm.app as app
+import openmm as mm
+import openmm.unit as unit
 
-import openmm_ramd.base as base
 from openmm_ramd import openmm_ramd
+import openmm_ramd.integrator as ramd_integrator
 
 prmtop_filename = "../data/hsp90_INH.prmtop"
 input_pdb_file = "../data/hsp90_INH.pdb"
 
 # Output equilibration trajectory
-trajectory_filename = "ramd_trajectory.pdb"
+trajectory_filename = "ramd_trajectory.dcd"
 
 # The interval between updates to the equilibration trajectory
 steps_per_trajectory_update = 50000
@@ -29,10 +26,10 @@ steps_per_trajectory_update = 50000
 minimize = True
 
 # The total number of RAMD steps to take
-num_steps = 100000000 # 200 nanoseconds
+num_steps = 10000000 # 20 nanoseconds
 
 # The interval between energy printed to standard output
-steps_per_energy_update = 300000
+steps_per_energy_update = 50000
 
 # time step of simulation 
 time_step = 0.002 * unit.picoseconds
@@ -52,9 +49,6 @@ lig_indices = [3259, 3260, 3261, 3262, 3263, 3264, 3265, 3266, 3267, 3268,
 # Indices for VMD selection
 # 3259 3260 3261 3262 3263 3264 3265 3266 3267 3268 3269 3270 3271 3272 3273 3274 3275 3276 3277 3278 3279 3280 3281 3282 3283 3284 3285 3286 3287 3288
 
-# To hold the ligand in place during the equilibration, a harmonic force 
-#  keeps the center of mass of the ligand and binding site at a constant
-#  distance
 ramd_force_magnitude = 14.0 * unit.kilocalories_per_mole / unit.angstrom
 
 # simulation initial and target temperature
@@ -76,30 +70,16 @@ steps_per_RAMD_update = 50
 
 RAMD_cutoff_distance = 0.0025 * unit.nanometer
 
-RAMD_max_distance = 1.5 * unit.nanometer
-
-#starting_ligand_site_distance = get_site_ligand_distance(
-#    input_pdb_file, rec_indices, lig_indices)
-#print("Starting ligand-site distance:", starting_ligand_site_distance)
-
-# Modify target_distance if you want the ligand to be pulled to a different
-# distance. For example:
-# target_distance = 0.6 * unit.nanometers
-#target_distance = starting_ligand_site_distance
-
-########################################################
-# DO NOT MODIFY BELOW UNLESS YOU KNOW WHAT YOU'RE DOING
-########################################################
+RAMD_max_distance = 3.0 * unit.nanometer
 
 prmtop = app.AmberPrmtopFile(prmtop_filename)
 mypdb = app.PDBFile(input_pdb_file)
-pdb_parmed = parmed.load_file(input_pdb_file)
-assert pdb_parmed.box_vectors is not None, "No box vectors "\
+box_vectors = (mypdb.topology).getPeriodicBoxVectors()
+
+assert box_vectors is not None, "No box vectors "\
     "found in {}. ".format(input_pdb_file) \
     + "Box vectors for an anchor must be defined with a CRYST "\
     "line within the PDB file."
-
-box_vectors = pdb_parmed.box_vectors
 
 system = prmtop.createSystem(nonbondedMethod=app.PME, nonbondedCutoff=nonbonded_cutoff,
         constraints=app.HBonds)
@@ -107,14 +87,21 @@ if constant_pressure:
     barostat = mm.MonteCarloBarostat(target_pressure, temperature, 25)
     system.addForce(barostat)
     
-integrator = mm.LangevinIntegrator(temperature, 1/unit.picosecond, time_step)
+integrator = ramd_integrator.RamdLangevinIntegrator(
+        temperature, 1/unit.picosecond, time_step, lig_indices, rec_indices, 
+        mypdb.positions)
 platform = mm.Platform.getPlatformByName('CUDA')
 properties = {"CudaDeviceIndex": cuda_index, "CudaPrecision": "mixed"}
 
-#simulation = app.Simulation(prmtop.topology, system, integrator, platform, properties)
 simulation = openmm_ramd.RAMDSimulation(
     prmtop.topology, system, integrator, ramd_force_magnitude, lig_indices, 
-    rec_indices, platform, properties)
+    rec_indices, ramd_steps=steps_per_RAMD_update,
+    r_min_ramd=RAMD_cutoff_distance,
+    force_out_freq=steps_per_RAMD_update,
+    max_dist=RAMD_max_distance, max_travel=9e9 * unit.nanometer,
+    platform=platform, properties=properties, log_file_name="ramd.log",
+    ramp_start_ns=0.0,
+    ramp_force_increase_per_ns=0.0 * unit.kilocalories_per_mole / unit.angstrom)
 
 simulation.context.setPositions(mypdb.positions)
 simulation.context.setPeriodicBoxVectors(*box_vectors)
@@ -124,40 +111,15 @@ if minimize:
 simulation.context.setVelocitiesToTemperature(temperature)
 simulation.reporters.append(app.StateDataReporter(stdout, steps_per_energy_update, step=True,
             potentialEnergy=True, temperature=True, volume=True))
-pdb_reporter = app.PDBReporter(trajectory_filename, steps_per_trajectory_update)
-simulation.reporters.append(pdb_reporter)
+simulation.reporters.append(app.DCDReporter(
+    trajectory_filename, steps_per_trajectory_update, enforcePeriodicBox=True))
 
-new_com = base.get_ligand_com(system, mypdb.positions, lig_indices)
 start_time = time.time()
-counter = 0
-while counter < num_steps:
-    old_com = new_com
-    simulation.step(steps_per_RAMD_update)
-    state = simulation.context.getState(getPositions = True)
-    positions = state.getPositions()
-    new_com = base.get_ligand_com(system, positions, lig_indices)
-    com_com_distance = np.linalg.norm(old_com.value_in_unit(unit.nanometers) \
-                                      - new_com.value_in_unit(unit.nanometers))
-    
-    lig_rec_distance = base.get_ligand_receptor_distance(system, positions, lig_indices, rec_indices)
-    if counter % 5000 == 0:
-        print("step:", counter, "lig_rec_distance:", lig_rec_distance)
-        
-    if com_com_distance*unit.nanometers < RAMD_cutoff_distance:
-        print("recomputing force at step:", counter)
-        simulation.recompute_RAMD_force()
-    
-    counter += steps_per_RAMD_update
-    if lig_rec_distance > RAMD_max_distance:
-        print("max distance exceeded at step:", counter)
-        break
-    
+counter = simulation.run_RAMD_sim(max_num_steps=num_steps)
+
 total_time = time.time() - start_time
 simulation_in_ns = counter * time_step.value_in_unit(unit.picoseconds) * 1e-3
 total_time_in_days = total_time / (86400.0)
 ns_per_day = simulation_in_ns / total_time_in_days
 print("RAMD benchmark:", ns_per_day, "ns/day")
 
-#end_distance = get_site_ligand_distance(output_pdb_file, rec_indices, 
-#                                                         lig_indices)
-#print("Final ligand-site distance:", end_distance)

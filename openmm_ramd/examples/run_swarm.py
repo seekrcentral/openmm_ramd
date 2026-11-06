@@ -1,0 +1,182 @@
+"""
+Run a swarm of RAMD simulations starting from a set of conformations
+generated from a conventional MD simulation.
+"""
+
+import os
+import json
+import argparse
+
+import numpy as np
+import mdtraj
+
+import openmm_ramd.helper as openmm_ramd_helper
+
+DEFAULT_STEPS_BETWEEN_STRUCTURES = 2500000
+
+def starting_structure_name(replica_index):
+    return f"starting_{replica_index}.pdb"
+
+def starting_state_name(replica_index):
+    return f"starting_{replica_index}.xml"
+
+def generate_starting_structure(
+        ff_parameters,
+        sim_parameters,
+        ramd_parameters,
+        replica_index,
+        steps_between_structures,
+        cuda_device_index="0",
+        ):
+    starting_ff_parameters = dict(ff_parameters)
+    starting_sim_parameters = dict(sim_parameters)
+    random_seed = starting_sim_parameters.get("random_seed", 0)
+    if random_seed != 0:
+        starting_sim_parameters["random_seed"] = random_seed + replica_index
+
+    openmm_ramd_helper.validate_sim_parameters(starting_sim_parameters)
+    openmm_ramd_helper.validate_ramd_parameters(ramd_parameters)
+    topology, system = openmm_ramd_helper.choose_topology_system_from_params(
+        starting_ff_parameters, starting_sim_parameters)
+    integrator = openmm_ramd_helper.choose_conventional_integrator(
+        starting_sim_parameters)
+    platform, properties = openmm_ramd_helper.choose_platform_and_properties(
+        cuda_device_index)
+    openmm_ramd_helper.add_restraints_to_system(
+        system, starting_ff_parameters["pdb_filename"], starting_sim_parameters)
+    simulation = openmm_ramd_helper.make_conventional_simulation(
+        topology, system, integrator, platform, properties, starting_ff_parameters,
+        starting_sim_parameters, minimize=True)
+    openmm_ramd_helper.write_conformations_to_pdb(
+        simulation, 1, steps_between_structures,
+        structure_basename=starting_structure_name(replica_index),
+        rec_indices=ramd_parameters.get("receptor_indices", []),
+    )
+    pdb = openmm_ramd_helper.openmm_app.PDBFile(
+        starting_structure_name(replica_index))
+    simulation.context.setPositions(pdb.positions)
+    state = simulation.context.getState(
+        getPositions=True, getVelocities=True, enforcePeriodicBox=True)
+    with open(starting_state_name(replica_index), "w") as f:
+        f.write(openmm_ramd_helper.openmm.XmlSerializer.serialize(state))
+
+def ensure_starting_structures(
+        ff_parameters,
+        sim_parameters,
+        ramd_parameters,
+        num_replicas,
+        steps_between_structures,
+        cuda_device_index="0",
+        ):
+    for replica_index in range(num_replicas):
+        if os.path.exists(starting_structure_name(replica_index)) \
+                and os.path.exists(starting_state_name(replica_index)):
+            continue
+        print("Generating starting structure", replica_index)
+        generate_starting_structure(
+            ff_parameters, sim_parameters, ramd_parameters, replica_index,
+            steps_between_structures, cuda_device_index=cuda_device_index)
+
+def run_swarm(
+        parameter_file: str,
+        cuda_device_index: str | None = "0",
+        use_xml_restarts: bool = False,
+        ):
+    with open(parameter_file) as f:
+        parameters = json.load(f)
+
+    ff_parameters = parameters.get("ff_parameters", {})
+    sim_parameters = parameters.get("sim_parameters", {})
+    ramd_parameters = parameters.get("ramd_parameters", {})
+
+    num_starting_structures = ramd_parameters.get("num_starting_structures", 5)
+    steps_between_structures = ramd_parameters.get("steps_between_structures", 
+                                                   DEFAULT_STEPS_BETWEEN_STRUCTURES)
+    num_velocity_restarts = ramd_parameters.get("num_velocity_restarts", 15)
+
+    if use_xml_restarts:
+        ensure_starting_structures(
+            ff_parameters, sim_parameters, ramd_parameters,
+            num_starting_structures, steps_between_structures,
+            cuda_device_index=cuda_device_index)
+        structure_names = [f"starting_{i}.pdb" for i in range(num_starting_structures)]
+    elif num_starting_structures > 0:
+        structure_names = [
+            starting_structure_name(i) for i in range(num_starting_structures)
+        ]
+        if all(os.path.exists(name) for name in structure_names):
+            print("Starting structures already exist - not regenerating.")
+        else:
+            structure_names = openmm_ramd_helper.simulate_conventional(
+                ff_parameters=ff_parameters,
+                sim_parameters=sim_parameters,
+                ramd_parameters=ramd_parameters,
+                num_structures_to_save=num_starting_structures,
+                steps_between_structures=steps_between_structures,
+                minimize=True,
+                cuda_device_index=cuda_device_index,
+                )
+        print("Finished conventional sims")
+    else:
+        structure_names = [ff_parameters["pdb_filename"]]
+    
+    print(f"Starting at RAMD simulation 0.")
+    for i, structure_name in enumerate(structure_names):
+        for j in range(num_velocity_restarts):
+            # TODO: add i and j to random seed calc.
+            ramd_log_filename = f"ramd_{i}_{j}.log"
+            trajectory_filename = None
+            if sim_parameters.get("steps_per_trajectory_update") is not None:
+                trajectory_filename = f"ramd_trajectory_{i}_{j}.dcd"
+            if openmm_ramd_helper.should_run(ramd_log_filename):
+                positions, box_vectors = openmm_ramd_helper.simulate_ramd(
+                    ff_parameters=ff_parameters,
+                    sim_parameters=sim_parameters,
+                    ramd_parameters=ramd_parameters,
+                    starting_structure_name=structure_name,
+                    minimize=False,
+                    ramd_log_filename=ramd_log_filename,
+                    cuda_device_index=cuda_device_index,
+                    trajectory_filename=trajectory_filename,
+                    starting_state_name=f"starting_{i}.xml" if use_xml_restarts else None,
+                    )
+                # Save the frames
+                pdb_filename = ff_parameters["pdb_filename"]
+                traj = mdtraj.load(pdb_filename)
+                traj.xyz = np.asarray(positions, dtype=np.float32)
+                traj.unitcell_vectors = np.asarray(box_vectors, dtype=np.float32)
+                receptor_indices = ramd_parameters["receptor_indices"]
+                atom_set_list = [set(traj.topology.atom(i) for i in receptor_indices)]
+                # Convert to float32 to avoid dtype mismatch with mdtraj's C extension
+                traj.xyz = traj.xyz.astype(np.float32)
+                traj.image_molecules(inplace=True, anchor_molecules=atom_set_list)
+                traj.save(f"ramd_frames_{i}_{j}.dcd")
+                if i < num_starting_structures - 1 or j < num_velocity_restarts -1:
+                    print("Completed simulation, now on to simulation", i+1, j+1)
+            else:
+                print(f"Skipping simulation {i} {j} with output file "
+                    f"{ramd_log_filename}. Already completed.")
+
+if __name__ == "__main__":
+    argparser = argparse.ArgumentParser(description=__doc__)
+    argparser.add_argument(
+        "parameter_file", metavar="PARAMETER_FILE", type=str,
+        help="The parameter file containing all the input files for a system.")
+
+    argparser.add_argument(
+        "-c", "--cuda_device_index", dest="cuda_device_index", default="0",
+        help="modify which cuda_device_index to run the simulation on. For "\
+        "example, the number 0 or 1 would suffice. To run on multiple GPU "\
+        "indices, simply enter comma separated indices. Example: '0,1'. "\
+        "If a value is not supplied, '0' will be used by default.", type=str)
+    
+    argparser.add_argument(
+        "-u", "--use-xml-restarts", action="store_true",
+        help="Use saved PDB/XML replica states, generating missing pairs with "
+        "separate conventional MD runs.")
+
+    args = argparser.parse_args()
+    args = vars(args)
+    parameter_file = args["parameter_file"]
+    cuda_device_index = args["cuda_device_index"]
+    run_swarm(parameter_file, cuda_device_index, args["use_xml_restarts"])

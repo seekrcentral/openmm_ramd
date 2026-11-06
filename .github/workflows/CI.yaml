@@ -20,7 +20,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        python-version: [3.8]
+        python-version: ["3.10"]
 
     steps:
     - uses: actions/checkout@v1
@@ -63,7 +63,7 @@ jobs:
       run: |
         # python setup.py install
         python -m openmm.testInstallation
-        pytest -v --cov=openmm_ramd --cov-report=xml --color=yes openmm_ramd/tests/ -s
+        pytest -v -m "not needs_cuda" --cov=openmm_ramd --cov-report=xml --color=yes openmm_ramd/tests/ -s
 
     - name: CodeCov
       uses: codecov/codecov-action@v1

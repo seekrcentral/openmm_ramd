@@ -5,12 +5,42 @@ Contain base classes, constants, and other objects used for RAMD.
 """
 
 import numpy as np
+import mdtraj
 try:
     import openmm.unit as unit
+    import openmm
 except ImportError:
     import simtk.openmm.unit as unit
+    import simtk.openmm as openmm
     
 kcal_per_mole_per_angstrom = unit.kilocalories_per_mole / unit.angstrom
+A_per_nm = 10.0
+
+def get_ligand_mass(system, group1):
+    """
+    Compute the mass of a group of atoms given an OpenMM system
+    and the indices of the atoms of interest.
+    
+    Parameters:
+    -----------
+    system : System()
+        The OpenMM System object which contains the atomic masses.
+        
+    group1 : list
+        A list of integers representing atom indices of the group
+        the center of mass is being computed for.
+        
+    Returns:
+    --------
+    mass : Quantity
+        The mass of the group of atoms
+    """
+    total_mass = 0.0 * unit.daltons
+    for index in group1:
+        atom_mass = system.getParticleMass(index)
+        total_mass += atom_mass
+    
+    return total_mass
 
 def get_ligand_com(system, positions, group1):
     """
@@ -67,21 +97,56 @@ def get_ligand_receptor_distance(system, positions, group1, group2):
     distance = np.linalg.norm(com2.value_in_unit(unit.nanometer)\
                               -com1.value_in_unit(unit.nanometer))
     return distance*unit.nanometer
-    
 
+""" # TODO: marked for removal
+def align_positions_by_reference(positions, ref_positions, selection):
+    # Make a Traj object from an OpenMM system
+    
+    traj.superpose(traj, atom_indices=selection, ref_atom_indices=selection)
 """
-def get_site_ligand_distance(topology, group1, group2):
-    ""
-    Compute the distance between the centers of masses of two groups of
-    atom indices (group1 and group2) in the pdb_filename structure.
-    ""
+
+def initialize_indices(indices):
+    """
+    Break down a string list of integers into a Python list of ints.
+    """
+    assert indices != ""
+    integers = indices.split(",")
+    for integer in integers:
+        integer_int = int(integer)
+    
+    return list(map(int, integers))
+
+def get_indices_ligand(pdb_filename, lig_resname):
+
+    """
+    Return the atom indices of the ligand molecule (beginning from 0).
+
+    Parameters
+    ----------
+    pdb_filename: str
+        User-defined PDB file.
+
+    lig_resname: str
+        Three-letter name for the ligand residue.
+
+    """
     traj = mdtraj.load(pdb_filename)
-    traj1 = traj.atom_slice(group1)
-    traj2 = traj.atom_slice(group2)
-    com1_array = mdtraj.compute_center_of_mass(traj1)
-    com2_array = mdtraj.compute_center_of_mass(traj2)
-    com1 = com1_array[0,:]
-    com2 = com2_array[0,:]
-    distance = np.linalg.norm(com2-com1)
-    return distance * unit.nanometer
-"""
+    atom_indices = traj.topology.select(f"resname {lig_resname}")
+    return atom_indices
+
+def impose_receptor_restraints(system, positions, force_constant, indices):
+    # Caused numerical instability
+    #restraint_expr = "0.5*k*((x-x0)^2+(y-y0)^2+(z-z0)^2)"
+    restraint_expr = "0.5*k*periodicdistance(x, y, z, x0, y0, z0)^2"
+    force = openmm.CustomExternalForce(restraint_expr)
+    force.addGlobalParameter("k", force_constant)
+    force.addPerParticleParameter("x0")
+    force.addPerParticleParameter("y0")
+    force.addPerParticleParameter("z0")
+    for index in indices:
+        position = positions[index]
+        force.addParticle(index, [position[0], position[1], position[2]])
+        
+    system.addForce(force)
+    return
+    
