@@ -22,7 +22,6 @@ try:
     import openmm.unit as unit
 except ImportError:
     import simtk.openmm.unit as unit
-import matplotlib.pyplot as plt
 
 import openmm_ramd.openmm_ramd as openmm_ramd
 import openmm_ramd.integrator as ramd_integrator
