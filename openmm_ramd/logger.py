@@ -35,11 +35,11 @@ class RAMD_logger():
         return
     
     def timestep_log(self, string, timestep):
-        new_string = "{} {}".format(timestep, string)
+        new_string = f"{timestep} {string}"
         self.log(new_string)
         return
     
     def force_log(self, string, timestep):
-        new_string = "{} {}".format(timestep, string)
+        new_string = f"{timestep} {string}"
         self.log(new_string, prefix=RAMD_FORCE_PREFIX)
         return

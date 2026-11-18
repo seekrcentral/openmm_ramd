@@ -1,0 +1,34 @@
+RAMD: 
+RAMD:   -------------------------------------------------------------------  
+RAMD:   Random Acceleration Molecular Dynamics Simulation using openmm_ramd
+RAMD:   -------------------------------------------------------------------  
+RAMD: 
+RAMD: ramdSteps                50
+RAMD: openmmVersion            8.0.0.dev-a780005
+RAMD: forceRAMD                0.1
+RAMD: rMinRamd                 1.0
+RAMD: forceOutFreq             50
+RAMD: timeStep                 2e-3 ps
+RAMD: temperature              3.0e2 K
+RAMD: protAtoms                None
+RAMD: ligAtoms                 [0]
+RAMD: ramdSeed                 0
+RAMD: mdSteps                  0
+RAMD: mdStart                  no
+RAMD: rMinMd                   0
+RAMD: maxDist                  10.0
+RAMD: debugLevel               0
+RAMD: Pure RAMD simulation is performed
+RAMD: Atoms subject to the random force are: [0]
+RAMD FORCE: 5612000 > LIGAND COM IS: [17.64956572  1.53595492 19.42770384] A
+RAMD FORCE: 5612000 > PROTEIN COM IS: [14.66468783  0.93137767  4.66549101] A
+RAMD: 5612000 > EXTERNAL FORCE VECTOR (F): [0.0019131  0.16081973 0.47342724] kcal/(A mol); ||F|| = 0.5
+RAMD: 5612000 > EXTERNAL FORCE DIRECTION (r): [0.00382619 0.32163947 0.94685448]; ||r|| = 1.0
+RAMD: 5612000 ***** EVALUATE 50 RAMD STEPS AT TIMESTEP 5612000 *****
+RAMD: 5612000    >>> DISTANCE LIGAND COM - PROTEIN COM IS: DIST = 15.073086523393902 A
+RAMD: 5612000    >>> THE DISTANCE TRAVELLED BY THE LIGAND IS: 0.20403362079562387 A (> 0.0025 nm)
+RAMD: 5612000    >>> CONTINUE WITH 50 STEPS OF RAMD SIMULATION
+RAMD: 5612000    >>> KEEP PREVIOUS ACCELERATION DIRECTION: [0.00382619 0.32163947 0.94685448]; ||r|| = 1.0
+EXIT: 5612050  > MAX DISTANCE LIGAND COM - PROTEIN COM REACHED
+EXIT: 5612050  > LIGAND EXIT EVENT DETECTED: STOP SIMULATION
+EXIT: 5612050  > EXIT OPENMM

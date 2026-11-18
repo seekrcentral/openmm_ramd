@@ -20,7 +20,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        python-version: [3.8]
+        python-version: ["3.10"]
 
     steps:
     - uses: actions/checkout@v1
@@ -34,12 +34,13 @@ jobs:
 
 
     # More info on options: https://github.com/conda-incubator/setup-miniconda
-    - uses: conda-incubator/setup-miniconda@v2
+    - uses: conda-incubator/setup-miniconda@v3
       with:
+        miniforge-version: latest
         python-version: ${{ matrix.python-version }}
         environment-file: devtools/conda-envs/test_env.yaml
 
-        channels: conda-forge,defaults
+        channels: conda-forge
 
         activate-environment: test
         auto-update-conda: false
@@ -63,7 +64,7 @@ jobs:
       run: |
         # python setup.py install
         python -m openmm.testInstallation
-        pytest -v --cov=openmm_ramd --cov-report=xml --color=yes openmm_ramd/tests/ -s
+        pytest -v -m "not needs_cuda" --cov=openmm_ramd --cov-report=xml --color=yes openmm_ramd/tests/ -s
 
     - name: CodeCov
       uses: codecov/codecov-action@v1

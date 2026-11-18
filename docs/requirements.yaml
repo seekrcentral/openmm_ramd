@@ -1,12 +1,9 @@
 name: docs
 channels:
+  - conda-forge
+  - nodefaults
 dependencies:
-    # Base depends
-  - python
+  - python=3.11
   - pip
-
-
-
-    # Pip-only installs
-  #- pip:
-
+  - sphinx=8.2.3
+  - sphinx_rtd_theme=3.1.0

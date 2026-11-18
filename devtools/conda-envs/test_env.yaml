@@ -3,7 +3,6 @@ channels:
 
   - conda-forge
 
-  - defaults
 dependencies:
     # Base depends
   - python
@@ -20,6 +19,5 @@ dependencies:
     # Pip-only installs
   - pip:
     - codecov
-    - parmed
     - mdtraj
 
